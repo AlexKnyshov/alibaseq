@@ -1,2 +1,2 @@
 # absx
-Alignment-Based Sequence Extraction
+Alignment-Based Sequence eXtraction
