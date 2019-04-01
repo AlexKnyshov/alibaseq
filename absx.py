@@ -29,6 +29,9 @@ optional.add_argument('-fl', metavar='N', help='flanks on each side in bp',dest=
 optional.add_argument('--no-recip', dest='reciprocate', action='store_false', help='do not run reciprocator', default=True)
 optional.add_argument('--is', dest='interstich', action='store_true', help='perform intercontig stiching', default=False)
 optional.add_argument('--allow-ovlp', dest='allow_ovlp', action='store_true', help='allow hit overlap', default=False)
+optional.add_argument('-bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
+#blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
+optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -60,6 +63,8 @@ else:
     allow_ovlp = vars(args)["allow_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
+    bt = vars(args)["bt"]
+    ac = vars(args)["ac"]
 
     print blastfilearg, evalue, filefolder,extractiontype,contignum,reciprocate, interstich, allow_ovlp, flanks, dry_run, noq
 
@@ -106,7 +111,6 @@ def copyfunc(dir1):
     messagefunc("copied "+str(copyfunc_c)+" files", debugfile, False)
 
 #function for parsing a blast output file
-#each query is allowed to have only 1 target
 def readblastfilefunc(b, debugfile):
     messagefunc("processing "+b, debugfile, False)
     querydict = {}
@@ -121,23 +125,58 @@ def readblastfilefunc(b, debugfile):
             #populate query table
             if qname in querydict:
                 if tname in querydict[qname]:
-                    querydict[qname][tname][linecounter] = rowfunc(row)
+                    querydict[qname][tname][linecounter] = rowfunc(row, ac)
                 else:
-                    querydict[qname][tname] = {linecounter: rowfunc(row)}
+                    querydict[qname][tname] = {linecounter: rowfunc(row, ac)}
             else:
-                querydict[qname] = {tname: {linecounter: rowfunc(row)}}
+                querydict[qname] = {tname: {linecounter: rowfunc(row, ac)}}
             #populate target table
             if tname in targetdict:
                 if qname in targetdict[tname]:
-                    targetdict[tname][qname][linecounter] = rowfunc(row)
+                    targetdict[tname][qname][linecounter] = rowfunc(row, ac)
                 else:
-                    targetdict[tname][qname] = {linecounter: rowfunc(row)}
+                    targetdict[tname][qname] = {linecounter: rowfunc(row, ac)}
             else:
-                targetdict[tname] = {qname: {linecounter: rowfunc(row)}}
+                targetdict[tname] = {qname: {linecounter: rowfunc(row, ac)}}
         linecounter += 1
     blastfile.close()
     return querydict, targetdict
 
+#WIP
+def readhmmerfilefunc(b, debugfile):
+    messagefunc("processing "+b, debugfile, False)
+    querydict = {}
+    targetdict = {}
+    hmmfile = open(b, "rU")
+    #reader = csv.reader(blastfile, delimiter='\t')
+    linecounter = 0
+    recordcounter = 0
+    for row in hmmfile:
+        if row[0] != "#":
+            line = row.strip().split()
+            #print line, line[12]
+            if float(line[12]) <= evalue:
+                qname = line[2]+".fas"
+                tname = line[0]
+                #populate query table
+                if qname in querydict:
+                    if tname in querydict[qname]:
+                        querydict[qname][tname][linecounter] = hmmrowfunc(line)
+                    else:
+                        querydict[qname][tname] = {linecounter: hmmrowfunc(line)}
+                else:
+                    querydict[qname] = {tname: {linecounter: hmmrowfunc(line)}}
+                #populate target table
+                if tname in targetdict:
+                    if qname in targetdict[tname]:
+                        targetdict[tname][qname][linecounter] = hmmrowfunc(line)
+                    else:
+                        targetdict[tname][qname] = {linecounter: hmmrowfunc(line)}
+                else:
+                    targetdict[tname] = {qname: {linecounter: hmmrowfunc(line)}}
+            linecounter += 1
+    hmmfile.close()
+    return querydict, targetdict
 
 #implement reciprocator break value, default 10. DO percet, e.g. 0.1 of the shortes range
 def reciprocator(inpdict, query, range1, range2, emax, bitscore, target):
@@ -171,21 +210,52 @@ def bltableout(output, bltableout_file, table_type):
 #dict[query] = [target_f, target_r, target_b, query_f, query_r, query_b, eval, bitscore]
 #query - query name, target_f - target start pos, target_r - target end, target_b - forward or reverse target direction
 #query_f - query start, query_r - query end, query_b - query direction
-def rowfunc(row):
+#blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
+#optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
+def rowfunc(row, aligntype):
     if int(row[8]) < int(row[9]):
+        target_b = True
+    else:
+        target_b = False
+    if aligntype == "normal" or "tblastn":
+        target_f = int(row[8])
+        target_r = int(row[9])
+    else: #blastx
+        if target_b:
+            target_f = int(row[8])*3-2
+            target_r = int(row[9])*3
+        else:
+            target_f = int(row[8])*3
+            target_r = int(row[9])*3-2
+    #check query
+    if int(row[6]) < int(row[7]):
+        query_b = True
+    else:
+        query_b = False
+    if aligntype == "normal" or "blastx":
+        query_f = int(row[6])
+        query_r = int(row[7])
+    else: #tblastn
+        if query_b:
+            query_f = int(row[6])*3-2
+            query_r = int(row[7])*3
+        else:
+            query_f = int(row[6])*3
+            query_r = int(row[7])*3-2
+    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11])]
+
+def hmmrowfunc(row):
+    if row[11] == "+":
         target_b = True
     else:
         target_b = False
     target_f = int(row[8])
     target_r = int(row[9])
     #check query
-    if int(row[6]) < int(row[7]):
-        query_b = True
-    else:
-        query_b = False
-    query_f = int(row[6])
-    query_r = int(row[7])
-    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11])]
+    query_b = True
+    query_f = int(row[4])
+    query_r = int(row[5])
+    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[12]), float(row[13])]
     
 #function to compute overlap between two ranges supplied as lists with start and end
 #returns overlap value
@@ -448,7 +518,10 @@ if not noq:
 #multi db option
 if filefolder == "M":
     #reading the blastfile
-    blastlist = glob.glob(blastfilearg+"/*.blast")
+    if bt == "blast":
+        blastlist = glob.glob(blastfilearg+"/*.blast")
+    else:
+        blastlist = glob.glob(blastfilearg+"/*.hmmer")
     translist = glob.glob(targetf+"/*.fasta")
 elif filefolder == "S":
     blastlist = [blastfilearg]
@@ -469,7 +542,10 @@ b1 = 0
 for b in blastlist:
     b1 += 1
     messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), debugfile, False)
-    output = readblastfilefunc(b, debugfile) #output 0 is query, 1 is target
+    if bt == "blast":
+        output = readblastfilefunc(b, debugfile) #output 0 is query, 1 is target
+    else:
+        output = readhmmerfilefunc(b, debugfile)
     final_table = {}
     final_target_table = {}
     for query in output[0].keys():
