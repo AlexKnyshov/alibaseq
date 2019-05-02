@@ -56,7 +56,7 @@ else
 		 	echo -ne $zo"% blast $name against $2...\r"
 		 	touch output.blast
 		 	$4 -db $2 -query fasextr.blast -out output.blast -outfmt 6 -num_threads $5 -evalue $3
-		 	blname=$(echo $2 | rev | cut -d'/' -f-1 | rev | cut -d'.' -f1)
+		 	blname=$(echo $2 | rev | cut -d'/' -f-1 | rev )
 		 	#cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr | sort -u -k2,2 --merge | sort -k1,1 -k11,11g -k12,12nr >> $blname.blast
 		 	cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr >> $blname.blast
 		done
