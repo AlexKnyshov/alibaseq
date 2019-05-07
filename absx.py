@@ -212,6 +212,7 @@ def bltableout(output, bltableout_file, table_type):
 #query_f - query start, query_r - query end, query_b - query direction
 #blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
 #optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
+##### redo to divide by three in blastx case
 def rowfunc(row, aligntype):
     if int(row[8]) < int(row[9]):
         target_b = True
@@ -436,8 +437,9 @@ def contig_sticher(inplist):
         gapstart = end_coords[key]
     return output
 
-def get_sequence(inplist, seq, extractiontype):
+def get_sequence(inplist, seq, extractiontype, fls):
     finalseq = Seq("")
+    seqlen = len(seq.seq)
     if extractiontype == "a":
         for i in inplist[1:]:
             if type(i) is not int:
@@ -463,12 +465,31 @@ def get_sequence(inplist, seq, extractiontype):
                 else:
                     start = min(start, i[0], i[1])
                     end = max(end, i[0], i[1])
-        finalseq = seq.seq[start-1:end]
+        start = start - 1
+        #fls implementation
+        if start - fls < 0:
+            start = 0
+        else:
+            start = start - fls
+        if end + fls > seqlen:
+            end = seqlen
+        else:
+            end = end + fls
+        finalseq = seq.seq[start:end]
     elif extractiontype == "n":
         finalseq = seq.seq
     elif extractiontype == "s":
         start = min(inplist[1][0],inplist[1][1])-1
         end = max(inplist[1][0],inplist[1][1])
+        #fls implementation
+        if start - fls < 0:
+            start = 0
+        else:
+            start = start - fls
+        if end + fls > seqlen:
+            end = seqlen
+        else:
+            end = end + fls
         finalseq = seq.seq[start:end]
     # elif extractiontype[:2] == "-e":
     #     flank = int(extractiontype[2:])
@@ -647,11 +668,11 @@ for b in blastlist:
                         if final_table[qname][1] == "none":
                             #extraction
                             messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
-                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype)
+                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
                             print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][0][t][1]
                             seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
                         else:
-                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype)
+                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
                             final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
                             messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                             dump_bucket = True
