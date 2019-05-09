@@ -187,12 +187,14 @@ def reciprocator(inpdict, query, range1, range2, emax, bitscore, target):
             if getOverlap([target_ranks_temp[2],target_ranks_temp[3]],[range1,range2]) > recip_olvp:
                 if target_ranks_temp[0] < emax:
                     cond = False
-                    messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
+                    #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
+                    messagefunc("ranks temp: "+",".join(target_ranks_temp), debugfile)
                     break
                 elif target_ranks_temp[0] == emax:
                     if target_ranks_temp[1] > bitscore:
                         cond = False
-                        messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
+                        #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
+                        messagefunc("ranks temp: "+",".join(target_ranks_temp), debugfile)
                         break
                     else:
                         wrn = "warning, target "+target+" has equal hits to several queries, saved for both!"
