@@ -143,6 +143,43 @@ def readblastfilefunc(b, debugfile):
     return querydict, targetdict
 
 #WIP
+#nhmmer --tblout
+# def readhmmerfilefunc(b, debugfile):
+#     messagefunc("processing "+b, debugfile, False)
+#     querydict = {}
+#     targetdict = {}
+#     hmmfile = open(b, "rU")
+#     #reader = csv.reader(blastfile, delimiter='\t')
+#     linecounter = 0
+#     recordcounter = 0
+#     for row in hmmfile:
+#         if row[0] != "#":
+#             line = row.strip().split()
+#             #print line, line[12]
+#             if float(line[12]) <= evalue:
+#                 qname = line[2]+".fas"
+#                 tname = line[0]
+#                 #populate query table
+#                 if qname in querydict:
+#                     if tname in querydict[qname]:
+#                         querydict[qname][tname][linecounter] = hmmrowfunc(line)
+#                     else:
+#                         querydict[qname][tname] = {linecounter: hmmrowfunc(line)}
+#                 else:
+#                     querydict[qname] = {tname: {linecounter: hmmrowfunc(line)}}
+#                 #populate target table
+#                 if tname in targetdict:
+#                     if qname in targetdict[tname]:
+#                         targetdict[tname][qname][linecounter] = hmmrowfunc(line)
+#                     else:
+#                         targetdict[tname][qname] = {linecounter: hmmrowfunc(line)}
+#                 else:
+#                     targetdict[tname] = {qname: {linecounter: hmmrowfunc(line)}}
+#             linecounter += 1
+#     hmmfile.close()
+#     return querydict, targetdict
+
+#hmmsearch --domtblout
 def readhmmerfilefunc(b, debugfile):
     messagefunc("processing "+b, debugfile, False)
     querydict = {}
@@ -156,7 +193,7 @@ def readhmmerfilefunc(b, debugfile):
             line = row.strip().split()
             #print line, line[12]
             if float(line[12]) <= evalue:
-                qname = line[2]+".fas"
+                qname = line[3]+".fas"
                 tname = line[0]
                 #populate query table
                 if qname in querydict:
@@ -177,6 +214,7 @@ def readhmmerfilefunc(b, debugfile):
             linecounter += 1
     hmmfile.close()
     return querydict, targetdict
+
 
 #implement reciprocator break value, default 10. DO percet, e.g. 0.1 of the shortes range
 def reciprocator(inpdict, query, range1, range2, emax, bitscore, target):
@@ -249,19 +287,32 @@ def rowfunc(row, aligntype):
             query_r = int(row[7])*3-2
     return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11])]
 
+# #nhmmer --tblout
+# def hmmrowfunc(row):
+#     if row[11] == "+":
+#         target_b = True
+#     else:
+#         target_b = False
+#     target_f = int(row[8])
+#     target_r = int(row[9])
+#     #check query
+#     query_b = True
+#     query_f = int(row[4])
+#     query_r = int(row[5])
+#     return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[12]), float(row[13])]
+
+#hmmsearch --domtblout   
 def hmmrowfunc(row):
-    if row[11] == "+":
-        target_b = True
-    else:
-        target_b = False
-    target_f = int(row[8])
-    target_r = int(row[9])
+    target_b = True
+    target_f = int(row[17])
+    target_r = int(row[18])
     #check query
     query_b = True
-    query_f = int(row[4])
-    query_r = int(row[5])
+    query_f = int(row[15])
+    query_r = int(row[16])
     return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[12]), float(row[13])]
-    
+
+
 #function to compute overlap between two ranges supplied as lists with start and end
 #returns overlap value
 def getOverlap(a, b):
