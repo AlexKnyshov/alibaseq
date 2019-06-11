@@ -73,7 +73,7 @@ warninglist = []
 recip_olvp = 10 #max overlap on query, after which contigs start compete
 hit_query_ovl = 10 #max overlap on query, after which target hits are merged
 hit_target_ovl = 0 #max overlap on target, after which target hits are merged
-contig_ovlp = 0 #max overlap on query, after which contigs are considered overlapping and are not stiched
+contig_ovlp = 1 #max overlap on query, after which contigs are considered overlapping and are not stiched
 bitAVG = False #using max bitscore or average bitscore to compare blast hits
 
 
@@ -466,7 +466,11 @@ def contig_overlap(inplist):
     combos = list(itertools.combinations(range(len(flatlist)), 2))
     ovlp = False
     for comb in range(len(combos)):
-        if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp:
+        if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp and not allow_ovlp:
+            messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
+            ovlp = True
+            break
+        elif getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp*30 and allow_ovlp:
             messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
             ovlp = True
             break
