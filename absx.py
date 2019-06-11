@@ -467,6 +467,7 @@ def contig_overlap(inplist):
     ovlp = False
     for comb in range(len(combos)):
         if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp:
+            messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
             ovlp = True
             break
     if ovlp:
