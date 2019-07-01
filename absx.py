@@ -603,14 +603,19 @@ if filefolder == "M":
         blastlist = glob.glob(blastfilearg+"/*.blast")
     else:
         blastlist = glob.glob(blastfilearg+"/*.hmmer")
-    translist = glob.glob(targetf+"/*.fasta")
+    if not dry_run:
+        translist = glob.glob(targetf+"/*.fasta")
 elif filefolder == "S":
     blastlist = [blastfilearg]
-    translist = [targetf]
+    if not dry_run:
+        translist = [targetf]
 
-messagefunc("list of target fasta files detected (mask *.fasta):", debugfile, False)
-for l in translist:
-    messagefunc(l, debugfile)
+if dry_run:
+    messagefunc("dry run, no target files", debugfile, False)
+else:
+    messagefunc("list of target fasta files detected (mask *.fasta):", debugfile, False)
+    for l in translist:
+        messagefunc(l, debugfile)
 
 #debug vars
 number = 0
@@ -702,58 +707,60 @@ for b in blastlist:
     tout.close()
 
 #####-----------------------------------------------------------------------
-
-    messagefunc("scanning the target fasta file...", debugfile, False)
-    
-    #get the transcriptome filename, matching blast filename
-    for t_file in translist:
-        if b[:-6].split("/")[-1] in t_file:
-            
-            inputf = SeqIO.parse(t_file, "fasta")
-            
-            seqname = b[:-6].split("/")[-1]
-            target_db_name = t_file.split("/")[-1]
+    if dry_run:
+        messagefunc("dry run, search through target file skipped", debugfile, False)
+    else:
+        messagefunc("scanning the target fasta file...", debugfile, False)
+        
+        #get the transcriptome filename, matching blast filename
+        for t_file in translist:
+            if b[:-6].split("/")[-1] in t_file:
+                
+                inputf = SeqIO.parse(t_file, "fasta")
+                
+                seqname = b[:-6].split("/")[-1]
+                target_db_name = t_file.split("/")[-1]
+                break
+        #print >> debugfile, "target:", target_db_name, "; target name:", seqname
+        if not inputf:
+            messagefunc("error, the target fasta file is not found", debugfile, False)
             break
-    #print >> debugfile, "target:", target_db_name, "; target name:", seqname
-    if not inputf:
-        messagefunc("error, the target fasta file is not found", debugfile, False)
-        break
-    c1 = len(final_target_table)
-    messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), debugfile, False)
-    for seq in inputf: #going over seqs in target file
-        if seq.id in final_target_table: #looking up same seq in target file
-            for qname in final_target_table[seq.id]: #checking it's queries
-                for t in range(len(final_table[qname][0])): #looking for target in the query table
-                    if final_table[qname][0][t][0] == seq.id: #found target in the query table
-                        if final_table[qname][1] == "none":
-                            #extraction
-                            messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
-                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
-                            print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][0][t][1]
-                            seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
-                        else:
-                            s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
-                            final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
-                            messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
-                            dump_bucket = True
-                            for buck1 in final_table[qname][1]:
-                                if type(buck1) is str:
-                                    dump_bucket = False
-                                    break
-                            if dump_bucket:
-                                s1 = dumper(final_table[qname][1], extractiontype)
-                                messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", debugfile)
-                                print >> debugfile, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][1]
-                                seqwritefunc(s1, qname,target_db_name, "Merged_"+qname, noq,output_dir)
-                        #cleanup
-                        del final_table[qname][0][t]
-                        break # breaking from target table
-            #clean up after all qs are done
-            del final_target_table[seq.id]
-            c1 = c1 - 1
-        if len(final_target_table) == 0:
-            messagefunc(str(c1)+" search finished", debugfile, False)
-            break
+        c1 = len(final_target_table)
+        messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), debugfile, False)
+        for seq in inputf: #going over seqs in target file
+            if seq.id in final_target_table: #looking up same seq in target file
+                for qname in final_target_table[seq.id]: #checking it's queries
+                    for t in range(len(final_table[qname][0])): #looking for target in the query table
+                        if final_table[qname][0][t][0] == seq.id: #found target in the query table
+                            if final_table[qname][1] == "none":
+                                #extraction
+                                messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
+                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
+                                print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][0][t][1]
+                                seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
+                            else:
+                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
+                                final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
+                                messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
+                                dump_bucket = True
+                                for buck1 in final_table[qname][1]:
+                                    if type(buck1) is str:
+                                        dump_bucket = False
+                                        break
+                                if dump_bucket:
+                                    s1 = dumper(final_table[qname][1], extractiontype)
+                                    messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", debugfile)
+                                    print >> debugfile, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][1]
+                                    seqwritefunc(s1, qname,target_db_name, "Merged_"+qname, noq,output_dir)
+                            #cleanup
+                            del final_table[qname][0][t]
+                            break # breaking from target table
+                #clean up after all qs are done
+                del final_target_table[seq.id]
+                c1 = c1 - 1
+            if len(final_target_table) == 0:
+                messagefunc(str(c1)+" search finished", debugfile, False)
+                break
 
 print len(warninglist)
 for w in warninglist:
