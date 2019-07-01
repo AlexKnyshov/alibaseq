@@ -728,6 +728,8 @@ for b in blastlist:
             break
         c1 = len(final_target_table)
         messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), debugfile, False)
+        if noq:
+            target_set = set()
         for seq in inputf: #going over seqs in target file
             if seq.id in final_target_table: #looking up same seq in target file
                 for qname in final_target_table[seq.id]: #checking it's queries
@@ -738,7 +740,12 @@ for b in blastlist:
                                 messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                                 s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
                                 print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][0][t][1]
-                                seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
+                                if noq:
+                                    if seq.id not in target_set:
+                                        seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
+                                        target_set.add(seq.id)
+                                else:
+                                    seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
                             else:
                                 s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
                                 final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
