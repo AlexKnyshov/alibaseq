@@ -588,8 +588,9 @@ messagefunc("command line parameters: "+' '.join(sys.argv), debugfile, False)
 
 
 #make modified dir
-messagefunc("make modified dir...", debugfile, False)
-mkdirfunc(output_dir)
+if not dry_run:
+    messagefunc("make modified dir...", debugfile, False)
+    mkdirfunc(output_dir)
 
 #copy files
 if not noq:
