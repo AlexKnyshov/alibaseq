@@ -285,7 +285,7 @@ def rowfunc(row, aligntype):
         else:
             query_f = int(row[6])*3
             query_r = int(row[7])*3-2
-    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11])]
+    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
 
 # #nhmmer --tblout
 # def hmmrowfunc(row):
@@ -345,16 +345,18 @@ def seqwritefunc(sequence, qname, tname, seqname, noq,dir1):
 def compute_ranks(hits):
     eval_max = []
     bitscore = []
+    ident = []
     coord = []
     for key, hit in hits.items():
         eval_max.append(hit[6])
         bitscore.append(hit[7])
+        ident.append(hit[8])
         coord.append(hit[0])
         coord.append(hit[1])
     if bitAVG:
-        return [min(eval_max), float(sum(bitscore)) / max(len(bitscore), 1), min(coord), max(coord)]
+        return [min(eval_max), float(sum(bitscore)) / max(len(bitscore), 1), min(coord), max(coord),float(sum(ident)) / max(len(ident), 1)]
     else:
-        return [min(eval_max), max(bitscore), min(coord), max(coord)]
+        return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident)]
 
 def hit_sticher(inpdict, extractiontype, ovlpB):
     outlist = []
@@ -639,7 +641,7 @@ for b in blastlist:
         #QUERY PROCESSING: first, rank targets by highest eval, also get average bitscore
         print >> debugfile, dash
         messagefunc("Q: "+query, debugfile)
-        ranks = [{},{}] #evail is first, bitscore is second
+        ranks = [{},{},{}] #evail is first, bitscore is second, ident is third
         messagefunc("computing initial target contig stats...", debugfile)
         for target, hits in output[0][query].items():
             ranks_temp = compute_ranks(hits)
@@ -647,6 +649,7 @@ for b in blastlist:
             if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target):
                 ranks[0][target] = ranks_temp[0]
                 ranks[1][target] = ranks_temp[1]
+                ranks[2][target] = ranks_temp[4]
             else:
                 messagefunc("reciprocator: target "+target+" removed from query "+query,  debugfile)
                 
@@ -660,15 +663,23 @@ for b in blastlist:
             messagefunc("sorting target contigs...", debugfile)
             wrn1 = True
             for x in range(len(ranks[0])): #using length of ranks, since some contigs are removed due to better hit elsewhere
-                if sorted_evals[0] != sorted_bits[0] and wrn1:
-                    messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), debugfile)
-                    wrn1 = False
-                    if x == 0:
-                        wrn = "warning, eval and bit disagree for query "+query+", sorted based on evals, "+str(ranks[0][sorted_evals[0]])+" "+str(ranks[1][sorted_bits[0]])
-                        warninglist.append(wrn)
-                        messagefunc(wrn, debugfile)
-                tname1 = sorted_evals.pop(0)
-                del sorted_bits[0]
+                if sorted_evals[0] != sorted_bits[0]:
+                    if wrn1:
+                        messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), debugfile)
+                        wrn1 = False
+                        # if x == 0:
+                        #     wrn = "warning, eval and bit disagree for query "+query+", sorted based on evals, "+str(ranks[0][sorted_evals[0]])+" "+str(ranks[1][sorted_bits[0]])
+                        #     warninglist.append(wrn)
+                        #     messagefunc(wrn, debugfile)
+                    if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
+                        tname1 = sorted_evals.pop(0)
+                        del sorted_bits[0]
+                    else:
+                        tname1 = sorted_bits.pop(0)
+                        del sorted_evals[0]
+                else:
+                    tname1 = sorted_evals.pop(0)
+                    del sorted_bits[0]
                 #SELECT OPTION:
                 targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, allow_ovlp)])
             messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), debugfile)
