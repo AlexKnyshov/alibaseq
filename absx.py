@@ -458,35 +458,66 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
     else:
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
-def contig_overlap(inplist):
+def contig_overlap(inplist, ranksd, ctnum):
     tab = {}
+    messagefunc("checking contig overlap", debugfile)
     for target in inplist:
         tab[target[0]] = [min(target[1][1][2],target[1][1][3]),max(target[1][-1][2],target[1][-1][3])]
-    flatlist = tab.values()
-    messagefunc("checking contig overlap", debugfile)
+        messagefunc(target[0]+" "+",".join([str(a) for a in tab[target[0]]]), debugfile)
     
-    combos = list(itertools.combinations(range(len(flatlist)), 2))
-    ovlp = False
-    for comb in range(len(combos)):
-        if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp and not allow_ovlp:
-            messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
-            ovlp = True
-            break
-        elif getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp*30 and allow_ovlp:
-            messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
-            ovlp = True
-            break
-    if ovlp:
-        return True
+    if ctnum != 1:
+        flatlist = tab.values()
+        combos = list(itertools.combinations(range(len(flatlist)), 2))
+        ovlp = False
+        for comb in range(len(combos)):
+            if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp and not allow_ovlp:
+                messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
+                ovlp = True
+                break
+            elif getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp*30 and allow_ovlp:
+                messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
+                ovlp = True
+                break
+        if ovlp:
+            return (True, inplist)
+        else:
+            return (False, inplist)
     else:
-        return False
+        sorted_tabkeys = sorted(tab, key=lambda x: abs(tab[x][0]-tab[x][1]), reverse=True)
+        bad_tabkeys = set()
+        for tkn in range(len(sorted_tabkeys)):
+            for tkb in range(tkn+1, len(sorted_tabkeys)):
+                if sorted_tabkeys[tkn] not in bad_tabkeys and sorted_tabkeys[tkb] not in bad_tabkeys:
+                    ovlpcalc = getOverlap(tab[sorted_tabkeys[tkn]][:2],tab[sorted_tabkeys[tkb]][:2])
+                    if (ovlpcalc > contig_ovlp and not allow_ovlp) or (ovlpcalc > contig_ovlp*30 and allow_ovlp):
+                        if ranksd[0][sorted_tabkeys[tkn]] <= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] > ranksd[1][sorted_tabkeys[tkb]]:
+                            bad_tabkeys.add(sorted_tabkeys[tkb])
+                            messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse at both", debugfile)
+                        elif ranksd[0][sorted_tabkeys[tkn]] >= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] < ranksd[1][sorted_tabkeys[tkb]]:
+                            bad_tabkeys.add(sorted_tabkeys[tkn])
+                            messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse at both", debugfile)
+                        else:
+                            if ranksd[2][sorted_tabkeys[tkn]] >= ranksd[2][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", based on ident", debugfile)
+                            elif ranksd[2][sorted_tabkeys[tkn]] < ranksd[2][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkn])
+                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", based on ident", debugfile)
+        tab_out = []
+        for target in inplist:
+            if target[0] not in bad_tabkeys:
+                tab_out.append(target)
+        return (False, tab_out)
+
 
 def contig_sticher(inplist):
     messagefunc("running contig sticher...", debugfile)
+    messagefunc("number of contigs: "+str(len(inplist)), debugfile)
     median_coords = {}
     start_coords = {}
     end_coords = {}
     for target in inplist:
+        messagefunc(target[0], debugfile)
         median_coords[target[0]] = median([min(target[1][1][2],target[1][1][3]),max(target[1][-1][2],target[1][-1][3])])
         start_coords[target[0]] = min(target[1][1][2],target[1][1][3])
         end_coords[target[0]] = max(target[1][-1][2],target[1][-1][3])
@@ -673,13 +704,16 @@ for b in blastlist:
                         #     messagefunc(wrn, debugfile)
                     if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
                         tname1 = sorted_evals.pop(0)
-                        del sorted_bits[0]
+                        #del sorted_bits[0]
+                        sorted_bits.remove(tname1)
                     else:
                         tname1 = sorted_bits.pop(0)
-                        del sorted_evals[0]
+                        #del sorted_evals[0]
+                        sorted_evals.remove(tname1)
                 else:
                     tname1 = sorted_evals.pop(0)
-                    del sorted_bits[0]
+                    #del sorted_bits[0]
+                    sorted_bits.remove(tname1)
                 #SELECT OPTION:
                 targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, allow_ovlp)])
             messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), debugfile)
@@ -687,14 +721,15 @@ for b in blastlist:
             #CHECK TARGETS FOR OVERLAP
             if interstich:
                 if len(targets) > 1:
-                    if contig_overlap(targets):
+                    ovlp_bin, targets_to_stich = contig_overlap(targets, ranks, contignum)
+                    if ovlp_bin:
                         messagefunc("contigs overlapping, no contig stiching", debugfile)        
                         stiching_schedule = "none"
                         #CUTTING OFF EXCESS CONTIGS
-                        if len(targets) > contignum and contignum > 0:
-                            targets = targets[:contignum]
+                        if len(targets_to_stich) > contignum and contignum > 0:
+                            targets_to_stich = targets_to_stich[:contignum]
                     else:
-                        stiching_schedule = contig_sticher(targets)
+                        stiching_schedule = contig_sticher(targets_to_stich)
                         #ALL will be stiched to just one
                 else:
                     messagefunc("only 1 target, no contig stiching", debugfile)
