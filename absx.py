@@ -723,16 +723,20 @@ for b in blastlist:
                 if len(targets) > 1:
                     ovlp_bin, targets = contig_overlap(targets, ranks, contignum)
                     if ovlp_bin:
+                        #CONTIGS OVERLAP
                         messagefunc("contigs overlapping, no contig stiching", debugfile)        
                         stiching_schedule = "none"
                         #CUTTING OFF EXCESS CONTIGS
                         if len(targets) > contignum and contignum > 0:
                             targets = targets[:contignum]
                     else:
+                        #CONTIGS DON'T OVERLAP
                         if len(targets) == 1:
+                            #They don't because only one survived overlap, as a result of contignum == 1
                             messagefunc("single contig, no contig stiching", debugfile)        
                             stiching_schedule = "none"
                         else:
+                            #many survived
                             stiching_schedule = contig_sticher(targets)
                             #ALL will be stiched to just one
                 else:
@@ -798,10 +802,6 @@ for b in blastlist:
                                     seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
                             else:
                                 s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
-                                # print final_table[qname]
-                                # print final_table[qname][1]
-                                # print final_table[qname][1].index(final_table[qname][0][t][0])
-                                # #messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                                 final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
                                 messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                                 dump_bucket = True
