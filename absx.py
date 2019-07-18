@@ -721,16 +721,20 @@ for b in blastlist:
             #CHECK TARGETS FOR OVERLAP
             if interstich:
                 if len(targets) > 1:
-                    ovlp_bin, targets_to_stich = contig_overlap(targets, ranks, contignum)
+                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum)
                     if ovlp_bin:
                         messagefunc("contigs overlapping, no contig stiching", debugfile)        
                         stiching_schedule = "none"
                         #CUTTING OFF EXCESS CONTIGS
-                        if len(targets_to_stich) > contignum and contignum > 0:
-                            targets_to_stich = targets_to_stich[:contignum]
+                        if len(targets) > contignum and contignum > 0:
+                            targets = targets[:contignum]
                     else:
-                        stiching_schedule = contig_sticher(targets_to_stich)
-                        #ALL will be stiched to just one
+                        if len(targets) == 1:
+                            messagefunc("single contig, no contig stiching", debugfile)        
+                            stiching_schedule = "none"
+                        else:
+                            stiching_schedule = contig_sticher(targets)
+                            #ALL will be stiched to just one
                 else:
                     messagefunc("only 1 target, no contig stiching", debugfile)
                     stiching_schedule = "none"
@@ -794,6 +798,10 @@ for b in blastlist:
                                     seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
                             else:
                                 s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
+                                # print final_table[qname]
+                                # print final_table[qname][1]
+                                # print final_table[qname][1].index(final_table[qname][0][t][0])
+                                # #messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                                 final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
                                 messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
                                 dump_bucket = True
