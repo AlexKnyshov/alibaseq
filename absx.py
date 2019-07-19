@@ -97,7 +97,7 @@ def mkdirfunc(dir1):
 
 #function for copying alignment files before changing them
 #all alignments are copied regardless of whether they will be modified or not
-def copyfunc(dir1):
+def copyfunc(dir1, debugfile):
     messagefunc("copying files *.fa*", debugfile, False)
     copyfunc_c = 0
     for x in glob.glob(queryf+"/*.fa*"):
@@ -217,7 +217,7 @@ def readhmmerfilefunc(b, debugfile):
 
 
 #implement reciprocator break value, default 10. DO percet, e.g. 0.1 of the shortes range
-def reciprocator(inpdict, query, range1, range2, emax, bitscore, target):
+def reciprocator(inpdict, query, range1, range2, emax, bitscore, target, debugfile):
     cond = True
     for key, val in inpdict.items():
         if key != query: #all other queries
@@ -358,7 +358,7 @@ def compute_ranks(hits):
     else:
         return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident)]
 
-def hit_sticher(inpdict, extractiontype, ovlpB):
+def hit_sticher(inpdict, extractiontype, ovlpB, debugfile):
     outlist = []
     #get best item and its direction
     bhit = -1
@@ -458,7 +458,7 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
     else:
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
-def contig_overlap(inplist, ranksd, ctnum):
+def contig_overlap(inplist, ranksd, ctnum, debugfile):
     tab = {}
     messagefunc("checking contig overlap", debugfile)
     for target in inplist:
@@ -510,7 +510,7 @@ def contig_overlap(inplist, ranksd, ctnum):
         return (False, tab_out)
 
 
-def contig_sticher(inplist):
+def contig_sticher(inplist, debugfile):
     messagefunc("running contig sticher...", debugfile)
     messagefunc("number of contigs: "+str(len(inplist)), debugfile)
     median_coords = {}
@@ -628,7 +628,7 @@ if not dry_run:
 #copy files
 if not noq:
     messagefunc("copy files...", debugfile_generic, False)
-    copyfunc(output_dir)
+    copyfunc(output_dir, debugfile_generic)
 
 #multi db option
 if filefolder == "M":
@@ -679,7 +679,7 @@ for b in blastlist:
         for target, hits in output[0][query].items():
             ranks_temp = compute_ranks(hits)
             #check reciprocy
-            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target):
+            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, debugfile):
                 ranks[0][target] = ranks_temp[0]
                 ranks[1][target] = ranks_temp[1]
                 ranks[2][target] = ranks_temp[4]
@@ -717,13 +717,13 @@ for b in blastlist:
                     #del sorted_bits[0]
                     sorted_bits.remove(tname1)
                 #SELECT OPTION:
-                targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, allow_ovlp)])
+                targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, allow_ovlp, debugfile)])
             messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), debugfile)
             #print >> debugfile, targets
             #CHECK TARGETS FOR OVERLAP
             if interstich:
                 if len(targets) > 1:
-                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum)
+                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum, debugfile)
                     if ovlp_bin:
                         #CONTIGS OVERLAP
                         messagefunc("contigs overlapping, no contig stiching", debugfile)        
@@ -739,7 +739,7 @@ for b in blastlist:
                             stiching_schedule = "none"
                         else:
                             #many survived
-                            stiching_schedule = contig_sticher(targets)
+                            stiching_schedule = contig_sticher(targets, debugfile)
                             #ALL will be stiched to just one
                 else:
                     messagefunc("only 1 target, no contig stiching", debugfile)
