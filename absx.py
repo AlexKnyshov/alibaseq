@@ -614,20 +614,20 @@ def dumper(inplist, extractiontype):
     return finalseq
 #---------------------------------------------------------------------
 
-debugfile = open("absx.log", "w")
+debugfile_generic = open("absx.log", "w")
 
-messagefunc("absx run with option "+filefolder+" selected", debugfile, False)
-messagefunc("command line parameters: "+' '.join(sys.argv), debugfile, False)
+messagefunc("absx run with option "+filefolder+" selected", debugfile_generic, False)
+messagefunc("command line parameters: "+' '.join(sys.argv), debugfile_generic, False)
 
 
 #make modified dir
 if not dry_run:
-    messagefunc("make modified dir...", debugfile, False)
+    messagefunc("make modified dir...", debugfile_generic, False)
     mkdirfunc(output_dir)
 
 #copy files
 if not noq:
-    messagefunc("copy files...", debugfile, False)
+    messagefunc("copy files...", debugfile_generic, False)
     copyfunc(output_dir)
 
 #multi db option
@@ -645,23 +645,25 @@ elif filefolder == "S":
         translist = [targetf]
 
 if dry_run:
-    messagefunc("dry run, no target files", debugfile, False)
+    messagefunc("dry run, no target files", debugfile_generic, False)
 else:
-    messagefunc("list of target fasta files detected (mask *.fasta):", debugfile, False)
+    messagefunc("list of target fasta files detected (mask *.fasta):", debugfile_generic, False)
     for l in translist:
-        messagefunc(l, debugfile)
+        messagefunc(l, debugfile_generic)
 
 #debug vars
 number = 0
 numberset = set()
 totalloci = 0
 #parsing blast files
-messagefunc("parsing blast files...", debugfile, False)
+messagefunc("parsing blast files...", debugfile_generic, False)
 
 b1 = 0
 for b in blastlist:
     b1 += 1
-    messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), debugfile, False)
+    messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), debugfile_generic, False)
+    debugfile = open(b.split("/")[-1]+"_absx.log", "w")
+    messagefunc("target log started: "+b, debugfile_generic, False)
     if bt == "blast":
         output = readblastfilefunc(b, debugfile) #output 0 is query, 1 is target
     else:
@@ -763,9 +765,10 @@ for b in blastlist:
 
 #####-----------------------------------------------------------------------
     if dry_run:
-        messagefunc("dry run, search through target file skipped", debugfile, False)
+        messagefunc("dry run, search through target file skipped", debugfile_generic, False)
     else:
-        messagefunc("scanning the target fasta file...", debugfile, False)
+        messagefunc("scanning the target fasta file...", debugfile_generic, False)
+        messagefunc("--------scanning the target---------", debugfile)
         
         #get the transcriptome filename, matching blast filename
         for t_file in translist:
@@ -823,12 +826,13 @@ for b in blastlist:
             if len(final_target_table) == 0:
                 messagefunc(str(c1)+" search finished", debugfile, False)
                 break
+    debugfile.close()
 
 print len(warninglist)
 for w in warninglist:
     print w
 
-print >> debugfile, "done"
-debugfile.close()
+print >> debugfile_generic, "done"
+debugfile_generic.close()
 
 print "done"
