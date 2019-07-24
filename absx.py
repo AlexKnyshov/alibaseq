@@ -28,7 +28,11 @@ optional.add_argument('-c', metavar='N', help='number of contigs to extract, if 
 optional.add_argument('-fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
 optional.add_argument('--no-recip', dest='reciprocate', action='store_false', help='do not run reciprocator', default=True)
 optional.add_argument('--is', dest='interstich', action='store_true', help='perform intercontig stiching', default=False)
-optional.add_argument('--allow-ovlp', dest='allow_ovlp', action='store_true', help='allow hit overlap', default=False)
+# optional.add_argument('--allow-ovlp', dest='allow_ovlp', action='store_true', help='allow hit overlap', default=False)
+optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -et s or -et a)', default=False)
+optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=int, default=5)
+optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=int, default=1)
+optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
 optional.add_argument('-bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
 #blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
 optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
@@ -42,6 +46,10 @@ else:
     blastfilearg = vars(args)["blastfilearg"]
     filefolder = vars(args)["filefolder"]
     extractiontype = vars(args)["extractiontype"]
+    if (extractiontype == "s" or extractiontype == "a") and vars(args)["trans_out"]:
+        trans_out = True
+    else:
+        trans_out = False
 
     if vars(args)["targetf"] == None:
         dry_run = True
@@ -60,26 +68,24 @@ else:
     contignum = vars(args)["contignum"]
     reciprocate = vars(args)["reciprocate"]
     interstich = vars(args)["interstich"]
-    allow_ovlp = vars(args)["allow_ovlp"]
+    # allow_ovlp = vars(args)["allow_ovlp"]
+    hit_ovlp = vars(args)["hit_ovlp"]
+    ctg_ovlp = vars(args)["ctg_ovlp"]
+    recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
     bt = vars(args)["bt"]
     ac = vars(args)["ac"]
 
-    print blastfilearg, evalue, filefolder,extractiontype,contignum,reciprocate, interstich, allow_ovlp, flanks, dry_run, noq
+    print blastfilearg, evalue, filefolder,extractiontype,contignum,reciprocate, interstich, flanks, dry_run, noq
 
 dash = "--------------------------------------------------------"
 warninglist = []
-recip_olvp = 10 #max overlap on query, after which contigs start compete
-hit_query_ovl = 10 #max overlap on query, after which target hits are merged
-hit_target_ovl = 0 #max overlap on target, after which target hits are merged
-contig_ovlp = 1 #max overlap on query, after which contigs are considered overlapping and are not stiched
-bitAVG = False #using max bitscore or average bitscore to compare blast hits
 
-
-def messagefunc(msg, f, fl=True):
+def messagefunc(msg, columns, f, fl=True):
     if fl:
-        sys.stdout.write(msg+"\r")
+        sys.stdout.write((" "*columns)+"\r")
+        sys.stdout.write(msg[:columns]+"\r")
         sys.stdout.flush()
     else:
         print ""
@@ -97,22 +103,22 @@ def mkdirfunc(dir1):
 
 #function for copying alignment files before changing them
 #all alignments are copied regardless of whether they will be modified or not
-def copyfunc(dir1, debugfile):
-    messagefunc("copying files *.fa*", debugfile, False)
+def copyfunc(dir1, cols, debugfile):
+    messagefunc("copying files *.fa*", cols, debugfile, False)
     copyfunc_c = 0
     for x in glob.glob(queryf+"/*.fa*"):
         locusfname = x.split("/")[-1]
         #print locusfname
         if not os.path.exists (dir1+"/"+locusfname):
             prog = "copying "+str(locusfname)+"..."
-            messagefunc(prog, debugfile)
+            messagefunc(prog, cols, debugfile)
             shutil.copy2(queryf+"/"+locusfname, dir1)
             copyfunc_c += 1
-    messagefunc("copied "+str(copyfunc_c)+" files", debugfile, False)
+    messagefunc("copied "+str(copyfunc_c)+" files", cols, debugfile, False)
 
 #function for parsing a blast output file
-def readblastfilefunc(b, debugfile):
-    messagefunc("processing "+b, debugfile, False)
+def readblastfilefunc(b, cols, debugfile):
+    messagefunc("processing "+b, cols, debugfile, False)
     querydict = {}
     targetdict = {}
     blastfile = open(b, "rU")
@@ -180,8 +186,8 @@ def readblastfilefunc(b, debugfile):
 #     return querydict, targetdict
 
 #hmmsearch --domtblout
-def readhmmerfilefunc(b, debugfile):
-    messagefunc("processing "+b, debugfile, False)
+def readhmmerfilefunc(b, cols, debugfile):
+    messagefunc("processing "+b, cols, debugfile, False)
     querydict = {}
     targetdict = {}
     hmmfile = open(b, "rU")
@@ -217,27 +223,32 @@ def readhmmerfilefunc(b, debugfile):
 
 
 #implement reciprocator break value, default 10. DO percet, e.g. 0.1 of the shortes range
-def reciprocator(inpdict, query, range1, range2, emax, bitscore, target, debugfile):
+def reciprocator(inpdict, query, range1, range2, emax, bitscore, target, cols, debugfile, recip_overlap):
+    messagefunc("running reciprocator on contig "+target, cols, debugfile)
     cond = True
     for key, val in inpdict.items():
         if key != query: #all other queries
             target_ranks_temp = compute_ranks(val) #get all pieces, compute values for this query
-            if getOverlap([target_ranks_temp[2],target_ranks_temp[3]],[range1,range2]) > recip_olvp:
+            if getOverlap([target_ranks_temp[2],target_ranks_temp[3]],[range1,range2]) > recip_overlap:
                 if target_ranks_temp[0] < emax:
                     cond = False
                     #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
-                    messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), debugfile)
+                    # messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), cols, debugfile)
+                    messagefunc(target+" has better eval hit to "+key, cols, debugfile)
                     break
                 elif target_ranks_temp[0] == emax:
                     if target_ranks_temp[1] > bitscore:
                         cond = False
                         #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
-                        messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), debugfile)
+                        # messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), cols, debugfile)
+                        messagefunc(target+" has better bitscore hit to "+key, cols, debugfile)
                         break
-                    else:
-                        wrn = "warning, target "+target+" has equal hits to several queries, saved for both!"
+                    elif target_ranks_temp[1] == bitscore:
+                        wrn = "warning, target "+target+" at query "+query+" has equal hits to query "+key+", saved for both!"
                         warninglist.append(wrn)
-                        messagefunc(wrn, debugfile)
+                        messagefunc(wrn, cols, debugfile)
+                        messagefunc("match to current query: emax "+str(emax)+", bitmax "+str(bitscore), cols, debugfile)
+                        messagefunc("match to "+key+": "+",".join(map(str, target_ranks_temp)), cols, debugfile)
     return cond
 
 
@@ -353,12 +364,9 @@ def compute_ranks(hits):
         ident.append(hit[8])
         coord.append(hit[0])
         coord.append(hit[1])
-    if bitAVG:
-        return [min(eval_max), float(sum(bitscore)) / max(len(bitscore), 1), min(coord), max(coord),float(sum(ident)) / max(len(ident), 1)]
-    else:
-        return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident)]
+    return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident)]
 
-def hit_sticher(inpdict, extractiontype, ovlpB, debugfile):
+def hit_sticher(inpdict, extractiontype, hit_overlap, cols, debugfile):
     outlist = []
     #get best item and its direction
     bhit = -1
@@ -377,58 +385,70 @@ def hit_sticher(inpdict, extractiontype, ovlpB, debugfile):
                 if extractiontype == "n":
                     outlist = [direct, [-1, -1, val[3], val[4], best, bhit]]
                 else:
-                    #Option -e is taken care of at the moment of seq extraction
                     outlist = [direct, [val[0],val[1], val[3], val[4], best, bhit]]
                     if extractiontype == "a" or extractiontype == "b":
-                        messagefunc("only one hit region, abort", debugfile)
+                        messagefunc("only one hit region, abort", cols, debugfile)
     if extractiontype == "a" and len(inpdict.keys()) > 1 or extractiontype == "b" and len(inpdict.keys()) > 1:
-        messagefunc("running hit overlapper...", debugfile)
+        messagefunc("running hit overlapper...", cols, debugfile)
         stichlist = inpdict.values()
+        messagefunc("best direction: "+str(direct), cols, debugfile)
+        for x in stichlist:
+            #print x
+            if x[2] == direct:
+                messagefunc(" ".join([str(a) for a in x]), cols, debugfile)
+            else:
+                messagefunc(" ".join([str(a) for a in x])+" exclude", cols, debugfile)
+        stichlist = [x for x in stichlist if x[2] == direct]
+        messagefunc("hits survived: "+str(len(stichlist)), cols, debugfile)
         ovlp = True
         while ovlp:
             if len(stichlist) == 1:
                 break
             else:
                 combos = list(itertools.combinations(range(len(stichlist)), 2))
-                messagefunc("combinations: "+str(len(combos))+", number of regions: "+str(len(stichlist)), debugfile)
+                messagefunc("combinations: "+str(len(combos))+", number of regions: "+str(len(stichlist)), cols, debugfile)
                 for comb in range(len(combos)):
                     tovlp = getOverlap(stichlist[combos[comb][0]][0:2],stichlist[combos[comb][1]][0:2])
                     qovlp = getOverlap(stichlist[combos[comb][0]][3:5],stichlist[combos[comb][1]][3:5])
-                    if tovlp > hit_target_ovl and abs(qovlp-tovlp) < hit_query_ovl: #hits overlap on target and roughly same way overlap on query
-                        #stichlist[combos[comb][0]] # this is whole record with 8 elements
-                        stichlist[combos[comb][0]] = [min(stichlist[combos[comb][0]][0], stichlist[combos[comb][1]][0],stichlist[combos[comb][0]][1], stichlist[combos[comb][1]][1]), max(stichlist[combos[comb][0]][0], stichlist[combos[comb][1]][0],stichlist[combos[comb][0]][1], stichlist[combos[comb][1]][1]), direct, min(stichlist[combos[comb][0]][3], stichlist[combos[comb][1]][3],stichlist[combos[comb][0]][4], stichlist[combos[comb][1]][4]), max(stichlist[combos[comb][0]][3], stichlist[combos[comb][1]][3],stichlist[combos[comb][0]][4], stichlist[combos[comb][1]][4]),direct,min(stichlist[combos[comb][0]][6], stichlist[combos[comb][1]][6]),max(stichlist[combos[comb][0]][7], stichlist[combos[comb][1]][7])]
-                        del stichlist[combos[comb][1]]
-                        messagefunc("overlapped, merging...", debugfile)
-                        
-                        ovlp = True
-                        break
-                    elif tovlp <= hit_target_ovl and abs(qovlp-tovlp) >= hit_query_ovl: #hits barely overlap on target but a lot on query -- possibly repeated target region? Select best based on scores
-                        messagefunc("warning: repeated hit region?", debugfile)
-                        print >> debugfile, stichlist[combos[comb][0]], stichlist[combos[comb][1]]
-                        if ovlpB:
+                    if tovlp == 0:
+                        if qovlp == 0:
+                            # print "both non ovlp, stich, set bool to false"
                             ovlp = False
-                        else:
-                            if stichlist[combos[comb][0]][6] < stichlist[combos[comb][1]][6] or stichlist[combos[comb][0]][7] > stichlist[combos[comb][1]][7] or abs(stichlist[combos[comb][0]][0]-stichlist[combos[comb][0]][1]) >= abs(stichlist[combos[comb][1]][0]-stichlist[combos[comb][1]][1]):
-                                del stichlist[combos[comb][1]]
-                            else:
-                                del stichlist[combos[comb][0]]
+                        elif 0 < qovlp <= hit_overlap:
+                            # print "mild ovlp on q, stich, set bool to false"
+                            ovlp = False
+                        elif qovlp > hit_overlap:
+                            # print "overlap on q is too large, remove the worst, set bool to true"
+                            stichlist = remove_worst(stichlist, combos, comb, debugfile)
                             ovlp = True
                             break
-                    elif (float(tovlp) / abs(stichlist[combos[comb][0]][0]-stichlist[combos[comb][0]][1]))*100 > 10 and qovlp == 0: #hits overlapping on target but not on query - remove as well as before
-                        messagefunc("warning: disjunct query hits, deleting...", debugfile)
-                        print >> debugfile, stichlist[combos[comb][0]], stichlist[combos[comb][1]], (float(tovlp) / abs(stichlist[combos[comb][0]][0]-stichlist[combos[comb][0]][1]))*100
-                        if stichlist[combos[comb][0]][6] < stichlist[combos[comb][1]][6] or stichlist[combos[comb][0]][7] > stichlist[combos[comb][1]][7] or abs(stichlist[combos[comb][0]][0]-stichlist[combos[comb][0]][1]) >= abs(stichlist[combos[comb][1]][0]-stichlist[combos[comb][1]][1]):
-                            del stichlist[combos[comb][1]]
-                        else:
-                            del stichlist[combos[comb][0]]
-                        ovlp = True
-                        break
                     else:
-                        ovlp = False
+                        if tovlp == qovlp:
+                            #print "both same overlap (compare with expansion of q and target), overlap, set bool to true"
+                            # print "check frames of two hits, if in frame, then keep, else remove the worst"
+                            startshift = abs(min(stichlist[combos[comb][0]][0], stichlist[combos[comb][0]][1])-min(stichlist[combos[comb][1]][0], stichlist[combos[comb][1]][1]))-1
+                            if startshift > 0 and startshift%3 == 0:
+                                # print "in frame, keep"
+                                stichlist[combos[comb][0]] = [min(stichlist[combos[comb][0]][0], stichlist[combos[comb][1]][0],stichlist[combos[comb][0]][1], stichlist[combos[comb][1]][1]), max(stichlist[combos[comb][0]][0], stichlist[combos[comb][1]][0],stichlist[combos[comb][0]][1], stichlist[combos[comb][1]][1]), direct, min(stichlist[combos[comb][0]][3], stichlist[combos[comb][1]][3],stichlist[combos[comb][0]][4], stichlist[combos[comb][1]][4]), max(stichlist[combos[comb][0]][3], stichlist[combos[comb][1]][3],stichlist[combos[comb][0]][4], stichlist[combos[comb][1]][4]),(not direct),min(stichlist[combos[comb][0]][6], stichlist[combos[comb][1]][6]),max(stichlist[combos[comb][0]][7], stichlist[combos[comb][1]][7])]
+                                del stichlist[combos[comb][1]]
+                            else:
+                                # print "not in frame, pick best"
+                                stichlist = remove_worst(stichlist, combos, comb, debugfile)
+                            ovlp = True
+                            break
+                        else:
+                            # print "target ovlp is larger than query, remove the worst, set bool to true"
+                            stichlist = remove_worst(stichlist, combos, comb, debugfile)
+                            ovlp = True
+                            break
+
                 if not ovlp:
-                    messagefunc("no more overlaps", debugfile)
+                    messagefunc("no more overlaps", cols, debugfile)
+
         #RUN STICHER and return margins and also sequence of regions and gaps
-        messagefunc("running hit sticher...", debugfile)
+        messagefunc("running hit sticher...", cols, debugfile)
+        for x in stichlist:
+            print >> debugfile, x
         median_coords = {}
         start_coords = {}
         end_coords = {}
@@ -449,6 +469,15 @@ def hit_sticher(inpdict, extractiontype, ovlpB, debugfile):
             gapstart = end_coords[key]
     return outlist
 
+def remove_worst(inplist1, combos1, comb1, debugfile):
+    if inplist1[combos1[comb1][0]][6] < inplist1[combos1[comb1][1]][6] or inplist1[combos1[comb1][0]][7] > inplist1[combos1[comb1][1]][7] or abs(inplist1[combos1[comb1][0]][0]-inplist1[combos1[comb1][0]][1]) >= abs(inplist1[combos1[comb1][1]][0]-inplist1[combos1[comb1][1]][1]):
+        print >> debugfile, inplist1[combos1[comb1][1]], "deleted"
+        del inplist1[combos1[comb1][1]]
+    else:
+        print >> debugfile, inplist1[combos1[comb1][0]], "deleted"
+        del inplist1[combos1[comb1][0]]
+    return inplist1
+
 def median(lst): #taken from https://stackoverflow.com/questions/24101524/finding-median-of-list-in-python
     n = len(lst)
     if n < 1:
@@ -458,24 +487,21 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
     else:
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
-def contig_overlap(inplist, ranksd, ctnum, debugfile):
+def contig_overlap(inplist, ranksd, ctnum, cols, debugfile, contig_overlap):
     tab = {}
-    messagefunc("checking contig overlap", debugfile)
+    messagefunc("running contig overlapper...", cols, debugfile)
     for target in inplist:
         tab[target[0]] = [min(target[1][1][2],target[1][1][3]),max(target[1][-1][2],target[1][-1][3])]
-        messagefunc(target[0]+" "+",".join([str(a) for a in tab[target[0]]]), debugfile)
+        # messagefunc(target[0]+" "+",".join([str(a) for a in tab[target[0]]]), cols, debugfile)
     
     if ctnum != 1:
         flatlist = tab.values()
+        contnames = tab.keys()
         combos = list(itertools.combinations(range(len(flatlist)), 2))
         ovlp = False
         for comb in range(len(combos)):
-            if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp and not allow_ovlp:
-                messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
-                ovlp = True
-                break
-            elif getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_ovlp*30 and allow_ovlp:
-                messagefunc("overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), debugfile)
+            if getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2]) > contig_overlap:
+                messagefunc(contnames[combos[comb][0]]+" and "+contnames[combos[comb][1]]+" overlapping: "+str(getOverlap(flatlist[combos[comb][0]][:2],flatlist[combos[comb][1]][:2])), cols, debugfile)
                 ovlp = True
                 break
         if ovlp:
@@ -489,20 +515,20 @@ def contig_overlap(inplist, ranksd, ctnum, debugfile):
             for tkb in range(tkn+1, len(sorted_tabkeys)):
                 if sorted_tabkeys[tkn] not in bad_tabkeys and sorted_tabkeys[tkb] not in bad_tabkeys:
                     ovlpcalc = getOverlap(tab[sorted_tabkeys[tkn]][:2],tab[sorted_tabkeys[tkb]][:2])
-                    if (ovlpcalc > contig_ovlp and not allow_ovlp) or (ovlpcalc > contig_ovlp*30 and allow_ovlp):
+                    if ovlpcalc > contig_overlap:
                         if ranksd[0][sorted_tabkeys[tkn]] <= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] > ranksd[1][sorted_tabkeys[tkb]]:
                             bad_tabkeys.add(sorted_tabkeys[tkb])
-                            messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse at both", debugfile)
+                            messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse at both", cols, debugfile)
                         elif ranksd[0][sorted_tabkeys[tkn]] >= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] < ranksd[1][sorted_tabkeys[tkb]]:
                             bad_tabkeys.add(sorted_tabkeys[tkn])
-                            messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse at both", debugfile)
+                            messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse at both", cols, debugfile)
                         else:
                             if ranksd[2][sorted_tabkeys[tkn]] >= ranksd[2][sorted_tabkeys[tkb]]:
                                 bad_tabkeys.add(sorted_tabkeys[tkb])
-                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", based on ident", debugfile)
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", based on ident", cols, debugfile)
                             elif ranksd[2][sorted_tabkeys[tkn]] < ranksd[2][sorted_tabkeys[tkb]]:
                                 bad_tabkeys.add(sorted_tabkeys[tkn])
-                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", based on ident", debugfile)
+                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", based on ident", cols, debugfile)
         tab_out = []
         for target in inplist:
             if target[0] not in bad_tabkeys:
@@ -510,14 +536,14 @@ def contig_overlap(inplist, ranksd, ctnum, debugfile):
         return (False, tab_out)
 
 
-def contig_sticher(inplist, debugfile):
-    messagefunc("running contig sticher...", debugfile)
-    messagefunc("number of contigs: "+str(len(inplist)), debugfile)
+def contig_sticher(inplist, cols, debugfile):
+    messagefunc("running contig sticher...", cols, debugfile)
+    messagefunc("number of contigs: "+str(len(inplist)), cols, debugfile)
     median_coords = {}
     start_coords = {}
     end_coords = {}
     for target in inplist:
-        messagefunc(target[0], debugfile)
+        messagefunc(target[0], cols, debugfile)
         median_coords[target[0]] = median([min(target[1][1][2],target[1][1][3]),max(target[1][-1][2],target[1][-1][3])])
         start_coords[target[0]] = min(target[1][1][2],target[1][1][3])
         end_coords[target[0]] = max(target[1][-1][2],target[1][-1][3])
@@ -530,23 +556,45 @@ def contig_sticher(inplist, debugfile):
         gapstart = end_coords[key]
     return output
 
-def get_sequence(inplist, seq, extractiontype, fls):
+def get_sequence(inplist, seq, extractiontype, fls, trans_out1):
     finalseq = Seq("")
     seqlen = len(seq.seq)
     if extractiontype == "a":
         for i in inplist[1:]:
-            if type(i) is not int:
-                start = min(i[0],i[1])-1
-                end = max(i[0],i[1])
-                if inplist[0]:
-                    finalseq += seq.seq[start:end]
+            if trans_out1:
+                #translation
+                if type(i) is not int:
+                    start = min(i[0],i[1])-1
+                    end = max(i[0],i[1])
+                    # messagefunc("len to translate: "+str(len(seq.seq[start:end])), debugfile)
+                    if inplist[0]:
+                        # if len(seq.seq[start:end]) % 3 != 0:
+                        #     ## check which frame is best
+                        #     stops = []
+                        #     for frame in range(3):
+                        #         stops.append(seq.seq[(start+frame):end].translate().count("*"))
+                        #     messagefunc("min stop frame: "+str(min(stops)),debugfile)
+                        finalseq += seq.seq[start:end].translate()
+                    else:
+                        finalseq += seq.seq[start:end].reverse_complement().translate()
                 else:
-                    finalseq += seq.seq[start:end].reverse_complement()
+                    if i > 0:
+                        finalseq += Seq("X"*i)
+                    else:
+                        finalseq += Seq("X")
             else:
-                if i > 0:
-                    finalseq += Seq("N"*i)
+                if type(i) is not int:
+                    start = min(i[0],i[1])-1
+                    end = max(i[0],i[1])
+                    if inplist[0]:
+                        finalseq += seq.seq[start:end]
+                    else:
+                        finalseq += seq.seq[start:end].reverse_complement()
                 else:
-                    finalseq += Seq("N")
+                    if i > 0:
+                        finalseq += Seq("N"*i)
+                    else:
+                        finalseq += Seq("N")
     elif extractiontype == "b":
         f1 = True
         for i in inplist[1:]:
@@ -583,21 +631,19 @@ def get_sequence(inplist, seq, extractiontype, fls):
             end = seqlen
         else:
             end = end + fls
-        finalseq = seq.seq[start:end]
-    # elif extractiontype[:2] == "-e":
-    #     flank = int(extractiontype[2:])
-    #     start = min(inplist[1][0],inplist[1][1])-1
-    #     end = max(inplist[1][0],inplist[1][1])
-    #     if start - flank < 0:
-    #         start = 0
-    #     else:
-    #         start = start - flank
-    #     if end + flank > len(seq.seq)-1:
-    #         end = len(seq.seq)-1
-    #     else:
-    #         end = end + flank
-    #     finalseq = seq.seq[start:end]
-    if not inplist[0] and extractiontype != "a":
+
+        if trans_out1:
+            #translation
+            if inplist[0]:
+                finalseq += seq.seq[start:end].translate()
+            else:
+                finalseq += seq.seq[start:end].reverse_complement().translate()
+        else:
+            if inplist[0]:
+                finalseq += seq.seq[start:end]
+            else:
+                finalseq += seq.seq[start:end].reverse_complement()
+    if not inplist[0] and extractiontype != "a" and extractiontype != "s":
         finalseq = finalseq.reverse_complement()
     return finalseq
 
@@ -615,20 +661,24 @@ def dumper(inplist, extractiontype):
 #---------------------------------------------------------------------
 
 debugfile_generic = open("absx.log", "w")
+#get terminal window size
+rows, cols = os.popen('stty size', 'r').read().split()
+cols = int(cols)-10
 
-messagefunc("absx run with option "+filefolder+" selected", debugfile_generic, False)
-messagefunc("command line parameters: "+' '.join(sys.argv), debugfile_generic, False)
+messagefunc("absx run with option "+filefolder+" selected", cols, debugfile_generic, False)
+messagefunc("command line parameters: "+' '.join(sys.argv), cols, debugfile_generic, False)
+
 
 
 #make modified dir
 if not dry_run:
-    messagefunc("make modified dir...", debugfile_generic, False)
+    messagefunc("make modified dir...", cols, debugfile_generic, False)
     mkdirfunc(output_dir)
 
 #copy files
 if not noq:
-    messagefunc("copy files...", debugfile_generic, False)
-    copyfunc(output_dir, debugfile_generic)
+    messagefunc("copy files...", cols, debugfile_generic, False)
+    copyfunc(output_dir, cols, debugfile_generic)
 
 #multi db option
 if filefolder == "M":
@@ -645,88 +695,82 @@ elif filefolder == "S":
         translist = [targetf]
 
 if dry_run:
-    messagefunc("dry run, no target files", debugfile_generic, False)
+    messagefunc("dry run, no target files", cols, debugfile_generic, False)
 else:
-    messagefunc("list of target fasta files detected (mask *.fasta):", debugfile_generic, False)
+    messagefunc("list of target fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
     for l in translist:
-        messagefunc(l, debugfile_generic)
+        messagefunc(l, cols, debugfile_generic)
 
 #debug vars
 number = 0
 numberset = set()
 totalloci = 0
 #parsing blast files
-messagefunc("parsing blast files...", debugfile_generic, False)
+messagefunc("parsing blast files...", cols, debugfile_generic, False)
 
 b1 = 0
 for b in blastlist:
     b1 += 1
-    messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), debugfile_generic, False)
+    messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     debugfile = open(b.split("/")[-1]+"_absx.log", "w")
-    messagefunc("target log started: "+b, debugfile_generic, False)
+    messagefunc("target log started: "+b, cols, debugfile_generic, False)
     if bt == "blast":
-        output = readblastfilefunc(b, debugfile) #output 0 is query, 1 is target
+        output = readblastfilefunc(b, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, debugfile)
+        output = readhmmerfilefunc(b, cols, debugfile)
     final_table = {}
     final_target_table = {}
     for query in output[0].keys():
         #QUERY PROCESSING: first, rank targets by highest eval, also get average bitscore
         print >> debugfile, dash
-        messagefunc("Q: "+query, debugfile)
+        messagefunc("Q: "+query, cols, debugfile)
         ranks = [{},{},{}] #evail is first, bitscore is second, ident is third
-        messagefunc("computing initial target contig stats...", debugfile)
+        messagefunc("computing initial target contig stats...", cols, debugfile)
         for target, hits in output[0][query].items():
             ranks_temp = compute_ranks(hits)
             #check reciprocy
-            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, debugfile):
+            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, cols, debugfile, recip_ovlp):
                 ranks[0][target] = ranks_temp[0]
                 ranks[1][target] = ranks_temp[1]
                 ranks[2][target] = ranks_temp[4]
             else:
-                messagefunc("reciprocator: target "+target+" removed from query "+query,  debugfile)
+                messagefunc("reciprocator: target "+target+" removed from query "+query, cols, debugfile)
                 
         if len(ranks[0]) == 0:
-            messagefunc("EMPTY "+query,  debugfile)
+            messagefunc("EMPTY "+query, cols, debugfile)
         else:
             sorted_evals = sorted(ranks[0], key=lambda x: ranks[0][x])
             sorted_bits = sorted(ranks[1], key=lambda x: ranks[1][x], reverse=True)
             #GET TARGETS ORDERED AND STICHED
             targets = []
-            messagefunc("sorting target contigs...", debugfile)
+            messagefunc("sorting target contigs...", cols, debugfile)
             wrn1 = True
             for x in range(len(ranks[0])): #using length of ranks, since some contigs are removed due to better hit elsewhere
                 if sorted_evals[0] != sorted_bits[0]:
                     if wrn1:
-                        messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), debugfile)
+                        messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
                         wrn1 = False
-                        # if x == 0:
-                        #     wrn = "warning, eval and bit disagree for query "+query+", sorted based on evals, "+str(ranks[0][sorted_evals[0]])+" "+str(ranks[1][sorted_bits[0]])
-                        #     warninglist.append(wrn)
-                        #     messagefunc(wrn, debugfile)
                     if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
                         tname1 = sorted_evals.pop(0)
-                        #del sorted_bits[0]
                         sorted_bits.remove(tname1)
                     else:
                         tname1 = sorted_bits.pop(0)
-                        #del sorted_evals[0]
                         sorted_evals.remove(tname1)
                 else:
                     tname1 = sorted_evals.pop(0)
-                    #del sorted_bits[0]
                     sorted_bits.remove(tname1)
                 #SELECT OPTION:
-                targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, allow_ovlp, debugfile)])
-            messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), debugfile)
+                messagefunc("run hitsticher function on contig "+tname1, cols, debugfile)
+                targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, hit_ovlp, cols, debugfile)])
+            messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), cols, debugfile)
             #print >> debugfile, targets
             #CHECK TARGETS FOR OVERLAP
             if interstich:
                 if len(targets) > 1:
-                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum, debugfile)
+                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum, cols, debugfile, ctg_ovlp)
                     if ovlp_bin:
                         #CONTIGS OVERLAP
-                        messagefunc("contigs overlapping, no contig stiching", debugfile)        
+                        messagefunc("contigs overlapping, no contig stiching", cols, debugfile)
                         stiching_schedule = "none"
                         #CUTTING OFF EXCESS CONTIGS
                         if len(targets) > contignum and contignum > 0:
@@ -735,17 +779,17 @@ for b in blastlist:
                         #CONTIGS DON'T OVERLAP
                         if len(targets) == 1:
                             #They don't because only one survived overlap, as a result of contignum == 1
-                            messagefunc("single contig, no contig stiching", debugfile)        
+                            messagefunc("single contig, no contig stiching", cols, debugfile)        
                             stiching_schedule = "none"
                         else:
                             #many survived
-                            stiching_schedule = contig_sticher(targets, debugfile)
+                            stiching_schedule = contig_sticher(targets, cols, debugfile)
                             #ALL will be stiched to just one
                 else:
-                    messagefunc("only 1 target, no contig stiching", debugfile)
+                    messagefunc("only 1 target, no contig stiching", cols, debugfile)
                     stiching_schedule = "none"
             else:
-                messagefunc("IS deactivated, no contig stiching", debugfile)
+                messagefunc("IS deactivated, no contig stiching", cols, debugfile)
                 stiching_schedule = "none"
                 if len(targets) > contignum and contignum > 0:
                     targets = targets[:contignum]
@@ -765,10 +809,10 @@ for b in blastlist:
 
 #####-----------------------------------------------------------------------
     if dry_run:
-        messagefunc("dry run, search through target file skipped", debugfile_generic, False)
+        messagefunc("dry run, search through target file skipped", cols, debugfile_generic, False)
     else:
-        messagefunc("scanning the target fasta file...", debugfile_generic, False)
-        messagefunc("--------scanning the target---------", debugfile)
+        messagefunc("scanning the target fasta file...", cols, debugfile_generic, False)
+        messagefunc("--------scanning the target---------", cols, debugfile)
         
         #get the transcriptome filename, matching blast filename
         for t_file in translist:
@@ -781,10 +825,10 @@ for b in blastlist:
                 break
         #print >> debugfile, "target:", target_db_name, "; target name:", seqname
         if not inputf:
-            messagefunc("error, the target fasta file is not found", debugfile, False)
+            messagefunc("error, the target fasta file is not found", cols, debugfile, False)
             break
         c1 = len(final_target_table)
-        messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), debugfile, False)
+        messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), cols, debugfile, False)
         if noq:
             target_set = set()
         for seq in inputf: #going over seqs in target file
@@ -794,8 +838,8 @@ for b in blastlist:
                         if final_table[qname][0][t][0] == seq.id: #found target in the query table
                             if final_table[qname][1] == "none":
                                 #extraction
-                                messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
-                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
+                                messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][0][t][0]+", query "+qname, cols, debugfile)
+                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks, trans_out)
                                 print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][0][t][1]
                                 if noq:
                                     if seq.id not in target_set:
@@ -804,9 +848,9 @@ for b in blastlist:
                                 else:
                                     seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
                             else:
-                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks)
+                                s1 = get_sequence(final_table[qname][0][t][1], seq, extractiontype, flanks, trans_out)
                                 final_table[qname][1][final_table[qname][1].index(final_table[qname][0][t][0])] = s1
-                                messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, debugfile)
+                                messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][0][t][0]+", query "+qname, cols, debugfile)
                                 dump_bucket = True
                                 for buck1 in final_table[qname][1]:
                                     if type(buck1) is str:
@@ -814,7 +858,7 @@ for b in blastlist:
                                         break
                                 if dump_bucket:
                                     s1 = dumper(final_table[qname][1], extractiontype)
-                                    messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", debugfile)
+                                    messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols, debugfile)
                                     print >> debugfile, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][1]
                                     seqwritefunc(s1, qname,target_db_name, "Merged_"+qname, noq,output_dir)
                             #cleanup
@@ -824,7 +868,7 @@ for b in blastlist:
                 del final_target_table[seq.id]
                 c1 = c1 - 1
             if len(final_target_table) == 0:
-                messagefunc(str(c1)+" search finished", debugfile, False)
+                messagefunc(str(c1)+" search finished", cols, debugfile, False)
                 break
     debugfile.close()
 
