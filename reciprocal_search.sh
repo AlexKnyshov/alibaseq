@@ -27,7 +27,7 @@ else
 		echo "extract contigs"
 		cut -f2 $1 | sort | uniq > contigs_to_extract.txt
 		python $7 contigs_to_extract.txt $2
-		$4 -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.1
+		$4 -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.001
 		rm contigs_to_extract.txt extracted_contigs.fas
 	else
 	  	echo "multiple sample option selected, number of samples: $(cat $8 | wc -l)"
@@ -39,7 +39,7 @@ else
 	  		echo "get contigs"
 	  		python $7 contigs_to_extract.txt $2/$sample
 	  		echo "run blast"
-	  		$4 -db $3 -query extracted_contigs.fas -out $1/$sample".blast_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.1
+	  		$4 -db $3 -query extracted_contigs.fas -out $1/$sample".blast_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.001
 	  		rm contigs_to_extract.txt extracted_contigs.fas
 		done < $8
 	fi
