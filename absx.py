@@ -36,6 +36,8 @@ optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query
 optional.add_argument('-bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
 #blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
 optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
+optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
+optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -67,6 +69,15 @@ else:
     evalue = vars(args)["evalue"]
     contignum = vars(args)["contignum"]
     reciprocate = vars(args)["reciprocate"]
+    if vars(args)["rec_search"] == None or reciprocate == False:
+        rec_search = None
+    else:
+        rec_search = vars(args)["rec_search"]
+        if vars(args)["target_ref_file"] == None:
+            print "please specify -R"
+            sys.exit()
+        else:
+            target_ref_file = vars(args)["target_ref_file"]
     interstich = vars(args)["interstich"]
     # allow_ovlp = vars(args)["allow_ovlp"]
     hit_ovlp = vars(args)["hit_ovlp"]
@@ -358,13 +369,16 @@ def compute_ranks(hits):
     bitscore = []
     ident = []
     coord = []
+    coord2 = []
     for key, hit in hits.items():
         eval_max.append(hit[6])
         bitscore.append(hit[7])
         ident.append(hit[8])
         coord.append(hit[0])
         coord.append(hit[1])
-    return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident)]
+        coord2.append(hit[3])
+        coord2.append(hit[4])
+    return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident), min(coord2), max(coord2)]
 
 def hit_sticher(inpdict, extractiontype, hit_overlap, cols, debugfile):
     outlist = []
@@ -394,11 +408,11 @@ def hit_sticher(inpdict, extractiontype, hit_overlap, cols, debugfile):
         messagefunc("best direction: "+str(direct), cols, debugfile)
         for x in stichlist:
             #print x
-            if x[2] == direct:
+            if (x[2] == x[5]) == direct:
                 messagefunc(" ".join([str(a) for a in x]), cols, debugfile)
             else:
                 messagefunc(" ".join([str(a) for a in x])+" exclude", cols, debugfile)
-        stichlist = [x for x in stichlist if x[2] == direct]
+        stichlist = [x for x in stichlist if (x[2] == x[5]) == direct]
         messagefunc("hits survived: "+str(len(stichlist)), cols, debugfile)
         ovlp = True
         while ovlp:
@@ -689,10 +703,14 @@ if filefolder == "M":
         blastlist = glob.glob(blastfilearg+"/*.hmmer")
     if not dry_run:
         translist = glob.glob(targetf+"/*.fasta")
+    if rec_search != None:
+        rec_list = glob.glob(rec_search+"/*.blast")
 elif filefolder == "S":
     blastlist = [blastfilearg]
     if not dry_run:
         translist = [targetf]
+    if rec_search != None:
+        rec_list = [rec_search]
 
 if dry_run:
     messagefunc("dry run, no target files", cols, debugfile_generic, False)
@@ -700,6 +718,9 @@ else:
     messagefunc("list of target fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
     for l in translist:
         messagefunc(l, cols, debugfile_generic)
+
+if rec_search != None:
+    target_ref = readblastfilefunc(target_ref_file, cols, debugfile_generic)
 
 #debug vars
 number = 0
@@ -718,6 +739,19 @@ for b in blastlist:
         output = readblastfilefunc(b, cols, debugfile) #output 0 is query, 1 is target
     else:
         output = readhmmerfilefunc(b, cols, debugfile)
+    if rec_search != None:
+        if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", cols, debugfile)
+            with open(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast_qtable.tab", "w") as rec_qout:
+                bltableout(rec_out[0],rec_qout, "query")
+        elif len(rec_list) == 1:
+            rec_out = readblastfilefunc(rec_list[0], cols, debugfile)
+            with open(rec_list[0]+"_qtable.tab", "w") as rec_qout:
+                bltableout(rec_out[0], rec_qout, "query")
+        else:
+            print "problem with reciprocal search file"
+            print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
+            sys.exit()
     final_table = {}
     final_target_table = {}
     for query in output[0].keys():
@@ -730,9 +764,72 @@ for b in blastlist:
             ranks_temp = compute_ranks(hits)
             #check reciprocy
             if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, cols, debugfile, recip_ovlp):
-                ranks[0][target] = ranks_temp[0]
-                ranks[1][target] = ranks_temp[1]
-                ranks[2][target] = ranks_temp[4]
+                # reciprocal search section
+                if rec_search != None:
+                    # check out refence matches:
+                    if query in target_ref[0]:
+                        messagefunc("reference check", cols, debugfile)
+                        best_ref_name = []
+                        best_ref_val = None
+                        for target_ref_name, target_ref_val in target_ref[0][query].items():
+                            # messagefunc(target_ref_name, cols, debugfile)
+                            ref_ranks_temp = compute_ranks(target_ref_val)
+                            # messagefunc(" ".join([str(x) for x in ref_ranks_temp]), cols, debugfile)
+                            if len(best_ref_name) == 0 and best_ref_val == None:
+                                best_ref_name = [target_ref_name]
+                                best_ref_val = ref_ranks_temp
+                            elif ref_ranks_temp[1] > best_ref_val[1]:
+                                best_ref_name = [target_ref_name]
+                                best_ref_val = ref_ranks_temp
+                            elif ref_ranks_temp[1] == best_ref_val[1]:
+                                best_ref_name.append(target_ref_name)
+                                best_ref_val = ref_ranks_temp
+                        msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
+                        messagefunc(msg, cols, debugfile)
+                        # check out sample to reference matches
+                        if target in rec_out[0]:
+                            messagefunc("sample check", cols, debugfile)
+                            best_rec_name = None
+                            best_rec_val = None
+                            for rec_target, rec_hits in rec_out[0][target].items():
+                                # messagefunc(rec_target, cols, debugfile)
+                                rec_ranks_temp = compute_ranks(rec_hits)
+                                # messagefunc(" ".join([str(x) for x in rec_ranks_temp]), cols, debugfile)
+                                if best_rec_name == None and best_rec_val == None:
+                                    best_rec_name = rec_target
+                                    best_rec_val = rec_ranks_temp
+                                elif rec_ranks_temp[1] > best_rec_val[1]:
+                                    best_rec_name = rec_target
+                                    best_rec_val = rec_ranks_temp
+                            msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
+                            messagefunc(msg, cols, debugfile)
+                            if best_rec_name in best_ref_name:
+                                # if getOverlap(best_ref_val[5:7], best_rec_val[5:7]) > 0:
+                                #     messagefunc("reciprocal condition met", cols, debugfile)
+                                ranks[0][target] = ranks_temp[0]
+                                ranks[1][target] = ranks_temp[1]
+                                ranks[2][target] = ranks_temp[4]
+                                # else:
+                                #     msg = "reciprocator: no overlap on target: "+" ".join([str(x) for x in best_ref_val])+"; "+" ".join([str(x) for x in best_rec_val])
+                                #     messagefunc(msg, cols, debugfile)
+                            else:
+                                messagefunc("reciprocator: target "+target+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
+                        else:
+                            msg = "no matches to ref in target [strange, possibly queries for forward and reciprocal search differ]"
+                            messagefunc(msg, cols, debugfile)
+                            ranks[0][target] = ranks_temp[0]
+                            ranks[1][target] = ranks_temp[1]
+                            ranks[2][target] = ranks_temp[4]
+                    else:
+                        msg = "no matches to query in ref [should not happen, possibly queries for forward and reciprocal search differ]"
+                        messagefunc(msg, cols, debugfile)
+                        ranks[0][target] = ranks_temp[0]
+                        ranks[1][target] = ranks_temp[1]
+                        ranks[2][target] = ranks_temp[4]
+                else:
+                    ranks[0][target] = ranks_temp[0]
+                    ranks[1][target] = ranks_temp[1]
+                    ranks[2][target] = ranks_temp[4]
             else:
                 messagefunc("reciprocator: target "+target+" removed from query "+query, cols, debugfile)
                 
