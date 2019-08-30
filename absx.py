@@ -676,8 +676,11 @@ def dumper(inplist, extractiontype):
 
 debugfile_generic = open("absx.log", "w")
 #get terminal window size
-rows, cols = os.popen('stty size', 'r').read().split()
-cols = int(cols)-10
+if not os.popen('stty size', 'r').read():
+    cols = 100
+else:
+    rows, cols = os.popen('stty size', 'r').read().split()
+    cols = int(cols)-10
 
 messagefunc("absx run with option "+filefolder+" selected", cols, debugfile_generic, False)
 messagefunc("command line parameters: "+' '.join(sys.argv), cols, debugfile_generic, False)
