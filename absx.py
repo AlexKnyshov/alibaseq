@@ -890,13 +890,13 @@ for b in blastlist:
                 stiching_schedule = "none"
                 if len(targets) > contignum and contignum > 0:
                     targets = targets[:contignum]
-
-        final_table[query] = [targets, stiching_schedule]
-        for t in targets:
-            if t[0] in final_target_table:
-                final_target_table[t[0]].append(query)
-            else:
-                final_target_table[t[0]] = [query]
+            #bug corrected here
+            final_table[query] = [targets, stiching_schedule]
+            for t in targets:
+                if t[0] in final_target_table:
+                    final_target_table[t[0]].append(query)
+                else:
+                    final_target_table[t[0]] = [query]
     qout = open(b.split("/")[-1]+"_qtable.tab", "w")
     tout = open(b.split("/")[-1]+"_ttable.tab", "w")
     bltableout(final_table,qout, "query")
