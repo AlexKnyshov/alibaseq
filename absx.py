@@ -1091,18 +1091,23 @@ for b in blastlist:
         messagefunc("--------scanning the target---------", cols, debugfile)
         
         #get the transcriptome filename, matching blast filename
-        for t_file in translist:
-            if b[:-6].split("/")[-1] in t_file:
-                
-                inputf = SeqIO.parse(t_file, "fasta")
-                
-                seqname = b[:-6].split("/")[-1]
-                target_db_name = t_file.split("/")[-1]
-                break
-        #print >> debugfile, "target:", target_db_name, "; target name:", seqname
-        if not inputf:
-            messagefunc("error, the target fasta file is not found", cols, debugfile, False)
-            break
+        if filefolder == "M":
+            seqname = b[:-6].split("/")[-1]
+            target_db_match = [target_db_m1 for target_db_m1 in translist if seqname in target_db_m1]
+            if len(target_db_match) == 1:
+                inputf = SeqIO.parse(seqname, "fasta")
+                target_db_name = seqname.split("/")[-1]
+            elif len(target_db_match) == 0:
+                msg = "error, the target fasta file "+seqname+" is not found"
+                messagefunc(msg, cols, debugfile, False)
+            else:
+                msg = "error, several matches to "+seqname+" are found in the folder"
+                messagefunc(msg, cols, debugfile, False)
+        else:
+            seqname = translist[0].split("/")[-1]
+            inputf = SeqIO.parse(seqname, "fasta")
+            target_db_name = seqname.split("/")[-1]
+        
         c1 = len(final_target_table)
         messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), cols, debugfile, False)
         if noq:
