@@ -38,6 +38,8 @@ optional.add_argument('-bt', choices=['blast','hmmer'], help='alignment table ty
 optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
 optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
+optional.add_argument('-m', choices=['eval','bit','ident'], help='metric to use to select best matches',dest="metric", default="eval")
+optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -87,6 +89,8 @@ else:
     output_dir = vars(args)["output"]
     bt = vars(args)["bt"]
     ac = vars(args)["ac"]
+    metric = vars(args)["metric"]
+    metricR = vars(args)["metricR"]
 
     print blastfilearg, evalue, filefolder,extractiontype,contignum,reciprocate, interstich, flanks, dry_run, noq
 
@@ -233,33 +237,78 @@ def readhmmerfilefunc(b, cols, debugfile):
     return querydict, targetdict
 
 
-#implement reciprocator break value, default 10. DO percet, e.g. 0.1 of the shortes range
-def reciprocator(inpdict, query, range1, range2, emax, bitscore, target, cols, debugfile, recip_overlap):
+#output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, cols, debugfile, recip_ovlp
+#output[1][target], query, ranks_temp, metric, target, cols, debugfile, recip_ovlp
+#def reciprocator(inpdict, query, range1, range2, emax, bitscore, target, cols, debugfile, recip_overlap):
+def reciprocator(inpdict, query, ranks, metric, metricR, target, cols, debugfile, recip_overlap):
     messagefunc("running reciprocator on contig "+target, cols, debugfile)
+    range1 = ranks[2]
+    range2 = ranks[3]
+    emax = ranks[0]
+    bitscore = ranks[1]
+    identR = ranks[4]
     cond = True
     for key, val in inpdict.items():
         if key != query: #all other queries
-            target_ranks_temp = compute_ranks(val) #get all pieces, compute values for this query
+            target_ranks_temp = compute_ranks(val, metricR) #get all pieces, compute values for this query
             if getOverlap([target_ranks_temp[2],target_ranks_temp[3]],[range1,range2]) > recip_overlap:
-                if target_ranks_temp[0] < emax:
-                    cond = False
-                    #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
-                    # messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), cols, debugfile)
-                    messagefunc(target+" has better eval hit to "+key, cols, debugfile)
-                    break
-                elif target_ranks_temp[0] == emax:
+                if metric == "eval":
+                    #first check eval
+                    if target_ranks_temp[0] < emax:
+                        cond = False
+                        messagefunc(target+" has better eval hit to "+key, cols, debugfile)
+                        break
+                    #then bit
+                    elif target_ranks_temp[0] == emax:
+                        if target_ranks_temp[1] > bitscore:
+                            cond = False
+                            messagefunc(target+" has better bitscore hit to "+key, cols, debugfile)
+                            break
+                        #then keep but warn
+                        elif target_ranks_temp[1] == bitscore:
+                            wrn = "warning, target "+target+" at query "+query+" has equal hits to query "+key+", saved for both!"
+                            warninglist.append(wrn)
+                            messagefunc(wrn, cols, debugfile)
+                            messagefunc("match to current query: emax "+str(emax)+", bitmax "+str(bitscore), cols, debugfile)
+                            messagefunc("match to "+key+": "+",".join(map(str, target_ranks_temp)), cols, debugfile)
+                elif metric == "bit":
+                    #first check bit
                     if target_ranks_temp[1] > bitscore:
                         cond = False
-                        #messagefunc("coords compared: "+str(target_ranks_temp[2])+":"+str(target_ranks_temp[3])+", "+str(range1)+":"+str(range2), debugfile)
-                        # messagefunc("ranks temp: "+",".join(map(str, target_ranks_temp)), cols, debugfile)
                         messagefunc(target+" has better bitscore hit to "+key, cols, debugfile)
                         break
+                    #then check eval
                     elif target_ranks_temp[1] == bitscore:
-                        wrn = "warning, target "+target+" at query "+query+" has equal hits to query "+key+", saved for both!"
-                        warninglist.append(wrn)
-                        messagefunc(wrn, cols, debugfile)
-                        messagefunc("match to current query: emax "+str(emax)+", bitmax "+str(bitscore), cols, debugfile)
-                        messagefunc("match to "+key+": "+",".join(map(str, target_ranks_temp)), cols, debugfile)
+                        if target_ranks_temp[0] < emax:
+                            cond = False
+                            messagefunc(target+" has better eval hit to "+key, cols, debugfile)
+                            break
+                        #then keep but warn
+                        elif target_ranks_temp[0] == emax:
+                            wrn = "warning, target "+target+" at query "+query+" has equal hits to query "+key+", saved for both!"
+                            warninglist.append(wrn)
+                            messagefunc(wrn, cols, debugfile)
+                            messagefunc("match to current query: emax "+str(emax)+", bitmax "+str(bitscore), cols, debugfile)
+                            messagefunc("match to "+key+": "+",".join(map(str, target_ranks_temp)), cols, debugfile)
+                elif metric == "ident":
+                    #first check eval
+                    if target_ranks_temp[4] > identR:
+                        cond = False
+                        messagefunc(target+" has better ident hit to "+key, cols, debugfile)
+                        break
+                    #then bit
+                    elif target_ranks_temp[4] == identR:
+                        if target_ranks_temp[1] > bitscore:
+                            cond = False
+                            messagefunc(target+" has better bitscore hit to "+key, cols, debugfile)
+                            break
+                        #then keep but warn
+                        elif target_ranks_temp[1] == bitscore:
+                            wrn = "warning, target "+target+" at query "+query+" has equal hits to query "+key+", saved for both!"
+                            warninglist.append(wrn)
+                            messagefunc(wrn, cols, debugfile)
+                            messagefunc("match to current query: ident "+str(identR)+", bitmax "+str(bitscore), cols, debugfile)
+                            messagefunc("match to "+key+": "+",".join(map(str, target_ranks_temp)), cols, debugfile)
     return cond
 
 
@@ -364,21 +413,34 @@ def seqwritefunc(sequence, qname, tname, seqname, noq,dir1):
     return 1
     fhandle.close()
 
-def compute_ranks(hits):
+def compute_ranks(hits, metricR):
     eval_max = []
     bitscore = []
     ident = []
     coord = []
     coord2 = []
+    lengths = {}
+    crn = 0
     for key, hit in hits.items():
-        eval_max.append(hit[6])
-        bitscore.append(hit[7])
-        ident.append(hit[8])
         coord.append(hit[0])
         coord.append(hit[1])
         coord2.append(hit[3])
         coord2.append(hit[4])
-    return [min(eval_max), max(bitscore), min(coord), max(coord), max(ident), min(coord2), max(coord2)]
+        # lengths.append(abs(hit[0]-hit[1])+1)
+        lengths[crn] = abs(hit[0]-hit[1])+1
+        crn += 1
+        eval_max.append(hit[6])
+        if metricR:
+            bitscore.append(hit[7]/abs(hit[0]-hit[1]))
+            ident.append(hit[8]/abs(hit[0]-hit[1]))
+        else:
+            bitscore.append(hit[7])
+            ident.append(hit[8])
+    trusted_len = len(bitscore)/2 + (len(bitscore)%2>0)
+    trusted_hits = sorted(lengths, key=lambda x: lengths[x], reverse = True)[:trusted_len]
+    # print >> debugfile, [bitscore[i] for i in trusted_hits]
+    # print >> debugfile, sum([bitscore[i] for i in trusted_hits])
+    return [min([eval_max[i] for i in trusted_hits]), sum([bitscore[i] for i in trusted_hits]), min(coord), max(coord), max([ident[i] for i in trusted_hits]), min(coord2), max(coord2)]
 
 def hit_sticher(inpdict, extractiontype, hit_overlap, cols, debugfile):
     outlist = []
@@ -501,7 +563,7 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
     else:
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
-def contig_overlap(inplist, ranksd, ctnum, cols, debugfile, contig_overlap):
+def contig_overlap(inplist, ranksd, metric, ctnum, cols, debugfile, contig_overlap):
     tab = {}
     messagefunc("running contig overlapper...", cols, debugfile)
     for target in inplist:
@@ -530,19 +592,50 @@ def contig_overlap(inplist, ranksd, ctnum, cols, debugfile, contig_overlap):
                 if sorted_tabkeys[tkn] not in bad_tabkeys and sorted_tabkeys[tkb] not in bad_tabkeys:
                     ovlpcalc = getOverlap(tab[sorted_tabkeys[tkn]][:2],tab[sorted_tabkeys[tkb]][:2])
                     if ovlpcalc > contig_overlap:
-                        if ranksd[0][sorted_tabkeys[tkn]] <= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] > ranksd[1][sorted_tabkeys[tkb]]:
-                            bad_tabkeys.add(sorted_tabkeys[tkb])
-                            messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse at both", cols, debugfile)
-                        elif ranksd[0][sorted_tabkeys[tkn]] >= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] < ranksd[1][sorted_tabkeys[tkb]]:
-                            bad_tabkeys.add(sorted_tabkeys[tkn])
-                            messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse at both", cols, debugfile)
-                        else:
-                            if ranksd[2][sorted_tabkeys[tkn]] >= ranksd[2][sorted_tabkeys[tkb]]:
+                        ### new metric options
+                        if metric == "eval":
+                            if ranksd[0][sorted_tabkeys[tkn]] < ranksd[0][sorted_tabkeys[tkb]]:
                                 bad_tabkeys.add(sorted_tabkeys[tkb])
-                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", based on ident", cols, debugfile)
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse", cols, debugfile)
+                            elif ranksd[0][sorted_tabkeys[tkn]] > ranksd[0][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkn])
+                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse", cols, debugfile)
+                            else:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", random", cols, debugfile)
+                        elif metric == "bit":
+                            if ranksd[1][sorted_tabkeys[tkn]] > ranksd[1][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse", cols, debugfile)
+                            elif ranksd[1][sorted_tabkeys[tkn]] < ranksd[1][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkn])
+                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse", cols, debugfile)
+                            else:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", random", cols, debugfile)
+                        elif metric == "ident":
+                            if ranksd[2][sorted_tabkeys[tkn]] > ranksd[2][sorted_tabkeys[tkb]]:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse", cols, debugfile)
                             elif ranksd[2][sorted_tabkeys[tkn]] < ranksd[2][sorted_tabkeys[tkb]]:
                                 bad_tabkeys.add(sorted_tabkeys[tkn])
-                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", based on ident", cols, debugfile)
+                                messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse", cols, debugfile)
+                            else:
+                                bad_tabkeys.add(sorted_tabkeys[tkb])
+                                messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", random", cols, debugfile)
+                        # if ranksd[0][sorted_tabkeys[tkn]] <= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] > ranksd[1][sorted_tabkeys[tkb]]:
+                        #     bad_tabkeys.add(sorted_tabkeys[tkb])
+                        #     messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", worse at both", cols, debugfile)
+                        # elif ranksd[0][sorted_tabkeys[tkn]] >= ranksd[0][sorted_tabkeys[tkb]] and ranksd[1][sorted_tabkeys[tkn]] < ranksd[1][sorted_tabkeys[tkb]]:
+                        #     bad_tabkeys.add(sorted_tabkeys[tkn])
+                        #     messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", worse at both", cols, debugfile)
+                        # else:
+                        #     if ranksd[2][sorted_tabkeys[tkn]] >= ranksd[2][sorted_tabkeys[tkb]]:
+                        #         bad_tabkeys.add(sorted_tabkeys[tkb])
+                        #         messagefunc(sorted_tabkeys[tkb]+" removed, overlapping with "+sorted_tabkeys[tkn]+", based on ident", cols, debugfile)
+                        #     elif ranksd[2][sorted_tabkeys[tkn]] < ranksd[2][sorted_tabkeys[tkb]]:
+                        #         bad_tabkeys.add(sorted_tabkeys[tkn])
+                        #         messagefunc(sorted_tabkeys[tkn]+" removed, overlapping with "+sorted_tabkeys[tkb]+", based on ident", cols, debugfile)
         tab_out = []
         for target in inplist:
             if target[0] not in bad_tabkeys:
@@ -764,9 +857,10 @@ for b in blastlist:
         ranks = [{},{},{}] #evail is first, bitscore is second, ident is third
         messagefunc("computing initial target contig stats...", cols, debugfile)
         for target, hits in output[0][query].items():
-            ranks_temp = compute_ranks(hits)
+            ranks_temp = compute_ranks(hits, metricR)
             #check reciprocy
-            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, cols, debugfile, recip_ovlp):
+            # if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp[2], ranks_temp[3], ranks_temp[0],ranks_temp[1], target, cols, debugfile, recip_ovlp):
+            if reciprocate == False or reciprocate == True and reciprocator(output[1][target], query, ranks_temp, metric, metricR, target, cols, debugfile, recip_ovlp):
                 # reciprocal search section
                 if rec_search != None:
                     # check out refence matches:
@@ -776,17 +870,33 @@ for b in blastlist:
                         best_ref_val = None
                         for target_ref_name, target_ref_val in target_ref[0][query].items():
                             # messagefunc(target_ref_name, cols, debugfile)
-                            ref_ranks_temp = compute_ranks(target_ref_val)
+                            ref_ranks_temp = compute_ranks(target_ref_val, metricR)
                             # messagefunc(" ".join([str(x) for x in ref_ranks_temp]), cols, debugfile)
                             if len(best_ref_name) == 0 and best_ref_val == None:
                                 best_ref_name = [target_ref_name]
                                 best_ref_val = ref_ranks_temp
-                            elif ref_ranks_temp[1] > best_ref_val[1]:
-                                best_ref_name = [target_ref_name]
-                                best_ref_val = ref_ranks_temp
-                            elif ref_ranks_temp[1] == best_ref_val[1]:
-                                best_ref_name.append(target_ref_name)
-                                best_ref_val = ref_ranks_temp
+                            else:
+                                if metric == "eval":
+                                    if ref_ranks_temp[0] < best_ref_val[0]:
+                                        best_ref_name = [target_ref_name]
+                                        best_ref_val = ref_ranks_temp
+                                    elif ref_ranks_temp[0] == best_ref_val[0]:
+                                        best_ref_name.append(target_ref_name)
+                                        best_ref_val = ref_ranks_temp
+                                elif metric == "bit":
+                                    if ref_ranks_temp[1] > best_ref_val[1]:
+                                        best_ref_name = [target_ref_name]
+                                        best_ref_val = ref_ranks_temp
+                                    elif ref_ranks_temp[1] == best_ref_val[1]:
+                                        best_ref_name.append(target_ref_name)
+                                        best_ref_val = ref_ranks_temp
+                                elif metric == "ident":
+                                    if ref_ranks_temp[2] > best_ref_val[2]:
+                                        best_ref_name = [target_ref_name]
+                                        best_ref_val = ref_ranks_temp
+                                    elif ref_ranks_temp[2] == best_ref_val[2]:
+                                        best_ref_name.append(target_ref_name)
+                                        best_ref_val = ref_ranks_temp
                         msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
                         messagefunc(msg, cols, debugfile)
                         # check out sample to reference matches
@@ -796,14 +906,45 @@ for b in blastlist:
                             best_rec_val = None
                             for rec_target, rec_hits in rec_out[0][target].items():
                                 # messagefunc(rec_target, cols, debugfile)
-                                rec_ranks_temp = compute_ranks(rec_hits)
+                                rec_ranks_temp = compute_ranks(rec_hits, metricR)
+                                # print >> debugfile, rec_target, rec_ranks_temp
+                                # rec_ranks_temp = compute_ranks(rec_hits, False)
+                                # print >> debugfile, rec_target, rec_ranks_temp
                                 # messagefunc(" ".join([str(x) for x in rec_ranks_temp]), cols, debugfile)
                                 if best_rec_name == None and best_rec_val == None:
                                     best_rec_name = rec_target
                                     best_rec_val = rec_ranks_temp
-                                elif rec_ranks_temp[1] > best_rec_val[1]:
-                                    best_rec_name = rec_target
-                                    best_rec_val = rec_ranks_temp
+                                else:
+                                    if metric == "eval":
+                                        if rec_ranks_temp[0] < best_rec_val[0]:
+                                            best_rec_name = rec_target
+                                            best_rec_val = rec_ranks_temp
+                                            # best_rec_name = [target_rec_name]
+                                            # best_rec_val = rec_ranks_temp
+                                        # elif rec_ranks_temp[0] == best_rec_val[0]:
+                                        #     best_rec_name.append(target_rec_name)
+                                        #     best_rec_val = rec_ranks_temp
+                                    elif metric == "bit":
+                                        if rec_ranks_temp[1] > best_rec_val[1]:
+                                            best_rec_name = rec_target
+                                            best_rec_val = rec_ranks_temp
+                                            # best_rec_name = [target_rec_name]
+                                            # best_rec_val = rec_ranks_temp
+                                        # elif rec_ranks_temp[1] == best_rec_val[1]:
+                                        #     best_rec_name.append(target_rec_name)
+                                        #     best_rec_val = rec_ranks_temp
+                                    elif metric == "ident":
+                                        if rec_ranks_temp[2] > best_rec_val[2]:
+                                            best_rec_name = rec_target
+                                            best_rec_val = rec_ranks_temp
+                                            # best_rec_name = [target_rec_name]
+                                            # best_rec_val = rec_ranks_temp
+                                        # elif rec_ranks_temp[2] == best_rec_val[2]:
+                                        #     best_rec_name.append(target_rec_name)
+                                        #     best_rec_val = rec_ranks_temp
+                                # elif rec_ranks_temp[1] > best_rec_val[1]:
+                                #     best_rec_name = rec_target
+                                #     best_rec_val = rec_ranks_temp
                             msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
                             messagefunc(msg, cols, debugfile)
                             if best_rec_name in best_ref_name:
@@ -841,25 +982,60 @@ for b in blastlist:
         else:
             sorted_evals = sorted(ranks[0], key=lambda x: ranks[0][x])
             sorted_bits = sorted(ranks[1], key=lambda x: ranks[1][x], reverse=True)
+            sorted_idents = sorted(ranks[2], key=lambda x: ranks[2][x], reverse=True)
             #GET TARGETS ORDERED AND STICHED
             targets = []
             messagefunc("sorting target contigs...", cols, debugfile)
             wrn1 = True
             for x in range(len(ranks[0])): #using length of ranks, since some contigs are removed due to better hit elsewhere
-                if sorted_evals[0] != sorted_bits[0]:
-                    if wrn1:
-                        messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
-                        wrn1 = False
-                    if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
+                # if sorted_evals[0] != sorted_bits[0]:
+                #     if wrn1:
+                #         messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
+                #         wrn1 = False
+                #     if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
+                #         tname1 = sorted_evals.pop(0)
+                #         sorted_bits.remove(tname1)
+                #     else:
+                #         tname1 = sorted_bits.pop(0)
+                #         sorted_evals.remove(tname1)
+                # else:
+                #     tname1 = sorted_evals.pop(0)
+                #     sorted_bits.remove(tname1)
+                #SELECT OPTION:
+
+                ##new metric options
+                if metric == "eval":
+                    if sorted_evals[0] != sorted_bits[0]:
+                        if wrn1:
+                            messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
+                            wrn1 = False
+                        if ranks[2][sorted_evals[0]] >= ranks[2][sorted_bits[0]]:
+                            tname1 = sorted_evals.pop(0)
+                            sorted_bits.remove(tname1)
+                        else:
+                            tname1 = sorted_bits.pop(0)
+                            sorted_evals.remove(tname1)
+                        sorted_idents.remove(tname1)
+                    else:
                         tname1 = sorted_evals.pop(0)
                         sorted_bits.remove(tname1)
-                    else:
-                        tname1 = sorted_bits.pop(0)
-                        sorted_evals.remove(tname1)
-                else:
-                    tname1 = sorted_evals.pop(0)
+                        sorted_idents.remove(tname1)
+                elif metric == "bit":
+                    if sorted_evals[0] != sorted_bits[0]:
+                        if wrn1:
+                            messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
+                            wrn1 = False
+                    tname1 = sorted_bits.pop(0)
+                    sorted_evals.remove(tname1)
+                    sorted_idents.remove(tname1)
+                elif metric == "ident":
+                    if sorted_evals[0] != sorted_bits[0]:
+                        if wrn1:
+                            messagefunc("eval and bit disagree at rank "+str(x+1)+" out of "+str(len(ranks[0])), cols, debugfile)
+                            wrn1 = False
+                    tname1 = sorted_idents.pop(0)
+                    sorted_evals.remove(tname1)
                     sorted_bits.remove(tname1)
-                #SELECT OPTION:
                 messagefunc("run hitsticher function on contig "+tname1, cols, debugfile)
                 targets.append([tname1, hit_sticher(output[0][query][tname1], extractiontype, hit_ovlp, cols, debugfile)])
             messagefunc("best matching contig: "+targets[0][0]+", total contigs: "+str(len(targets)), cols, debugfile)
@@ -867,7 +1043,7 @@ for b in blastlist:
             #CHECK TARGETS FOR OVERLAP
             if interstich:
                 if len(targets) > 1:
-                    ovlp_bin, targets = contig_overlap(targets, ranks, contignum, cols, debugfile, ctg_ovlp)
+                    ovlp_bin, targets = contig_overlap(targets, ranks, metric, contignum, cols, debugfile, ctg_ovlp)
                     if ovlp_bin:
                         #CONTIGS OVERLAP
                         messagefunc("contigs overlapping, no contig stiching", cols, debugfile)
