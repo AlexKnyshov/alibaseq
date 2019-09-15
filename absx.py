@@ -1095,7 +1095,7 @@ for b in blastlist:
             seqname = b[:-6].split("/")[-1]
             target_db_match = [target_db_m1 for target_db_m1 in translist if seqname in target_db_m1]
             if len(target_db_match) == 1:
-                inputf = SeqIO.parse(seqname, "fasta")
+                inputf = SeqIO.parse(target_db_match[0], "fasta")
                 target_db_name = seqname.split("/")[-1]
             elif len(target_db_match) == 0:
                 msg = "error, the target fasta file "+seqname+" is not found"
@@ -1104,7 +1104,7 @@ for b in blastlist:
                 msg = "error, several matches to "+seqname+" are found in the folder"
                 messagefunc(msg, cols, debugfile, False)
         else:
-            seqname = translist[0].split("/")[-1]
+            seqname = translist[0]
             inputf = SeqIO.parse(seqname, "fasta")
             target_db_name = seqname.split("/")[-1]
         
