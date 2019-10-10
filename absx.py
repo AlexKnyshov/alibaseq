@@ -371,16 +371,16 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                             if comp0 == 0 or comp0 == 2:
                                                                 print >> debugfile, hitdict[hitkey], "deleted"
                                                                 if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                                    bucketdict[refhitkey] = nbuck1
-                                                                    nbuck1 += 1
+                                                                    bucketdict[refhitkey] = nbuck
+                                                                    nbuck += 1
                                                                 del hitdict[hitkey]
                                                                 if hitkey in bucketdict:
                                                                     del bucketdict[hitkey]
                                                             else:
                                                                 print >> debugfile, hitdict[refhitkey], "deleted"
                                                                 if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                                    bucketdict[hitkey] = nbuck1
-                                                                    nbuck1 += 1
+                                                                    bucketdict[hitkey] = nbuck
+                                                                    nbuck += 1
                                                                 del hitdict[refhitkey]
                                                                 if refhitkey in bucketdict:
                                                                     del bucketdict[refhitkey]
@@ -399,16 +399,16 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                     if comp0 == 0 or comp0 == 2:
                                                         print >> debugfile, hitdict[hitkey], "deleted"
                                                         if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                            bucketdict[refhitkey] = nbuck1
-                                                            nbuck1 += 1
+                                                            bucketdict[refhitkey] = nbuck
+                                                            nbuck += 1
                                                         del hitdict[hitkey]
                                                         if hitkey in bucketdict:
                                                             del bucketdict[hitkey]
                                                     else:
                                                         print >> debugfile, hitdict[refhitkey], "deleted"
                                                         if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                            bucketdict[hitkey] = nbuck1
-                                                            nbuck1 += 1
+                                                            bucketdict[hitkey] = nbuck
+                                                            nbuck += 1
                                                         del hitdict[refhitkey]
                                                         if refhitkey in bucketdict:
                                                             del bucketdict[refhitkey]
