@@ -1196,7 +1196,7 @@ else:
 
 #reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, evalue, False, cols, debugfile_generic)
+    target_ref = readblastfilefunc(target_ref_file, evalue, False, ac, cols, debugfile_generic)
 else:
     target_ref = None
 
@@ -1223,9 +1223,9 @@ for b in blastlist:
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
-            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, cols, debugfile)
         elif len(rec_list) == 1:
-            rec_out = readblastfilefunc(rec_list[0], None, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_list[0], None, False, ac, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
