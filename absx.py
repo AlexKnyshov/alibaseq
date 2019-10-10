@@ -17,27 +17,28 @@ required = parser.add_argument_group('required arguments')
 optional = parser.add_argument_group('optional arguments')
 
 required.add_argument('-b', metavar='table', help='alignment table file',dest="blastfilearg",required=True)
-required.add_argument('-ff', choices=['S','M'], help='file / folder mode',dest="filefolder", required=True)
-required.add_argument('-et', choices=['n','s','a','b'], help='extraction type: n (normal), s (only best hit region), a (extract all hit regions and join them), b (extract region between two outmost hit regions)',dest="extractiontype",required=True)
+required.add_argument('-f', choices=['S','M'], help='file / folder mode',dest="filefolder", required=True)
+required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n (normal), s (only best hit region), a (extract all hit regions and join them), b (extract region between two outmost hit regions)',dest="extractiontype",required=True)
 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
 optional.add_argument('-q', metavar='query', help='query file(s) to which extracted results are to be appended; if not specified, sequences are extracted into blank files',dest="queryf")
 optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="absx_out")
-optional.add_argument('-eval', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
+optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
+optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
 optional.add_argument('-c', metavar='N', help='number of contigs to extract, if set to 0, then extract all contigs',dest="contignum", type=int, default=0)
-optional.add_argument('-fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
-optional.add_argument('-lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
+optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
+optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
 optional.add_argument('--is', dest='interstich', action='store_true', help='perform intercontig stiching', default=False)
 optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -et s or -et a)', default=False)
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=int, default=5)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=int, default=1)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
-optional.add_argument('-bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
-# blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
-optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
+optional.add_argument('--bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
+optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
+# will need to change the options above - account for hmmer, also account for translation possibility (dont try to translate proteins)
 optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
-optional.add_argument('-m', choices=['eval','bit','ident'], help='metric to use to select best matches',dest="metric", default="eval")
+optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 
 if len(sys.argv) == 1:
@@ -61,11 +62,15 @@ else:
     else:
         targetf = vars(args)["targetf"]
         dry_run = False
-        if vars(args)["queryf"] == None:
-            noq = True
+        outM = vars(args)["outM"]
+        if outM == "query":
+            if vars(args)["queryf"] == None:
+                noq = True
+            else:
+                queryf = vars(args)["queryf"]
+                noq = False
         else:
-            queryf = vars(args)["queryf"]
-            noq = False
+            noq = True
     
     evalue = vars(args)["evalue"]
     contignum = vars(args)["contignum"]
@@ -88,7 +93,7 @@ else:
     output_dir = vars(args)["output"]
     bt = vars(args)["bt"]
     ac = vars(args)["ac"]
-    metric = vars(args)["metric"]
+    metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
 
     print blastfilearg, evalue, filefolder, extractiontype, contignum, local_rec, interstich, flanks, dry_run, noq
@@ -131,36 +136,60 @@ def copyfunc(dir1, cols, debugfile):
     messagefunc("copied "+str(copyfunc_c)+" files", cols, debugfile, False)
 
 #function for parsing a blast output file
-def readblastfilefunc(b, cols, debugfile):
+def readblastfilefunc(b, evalue1, as_target, ac3, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
-    querydict = {}
-    targetdict = {}
+    returndict = {}
     blastfile = open(b, "rU")
     reader = csv.reader(blastfile, delimiter='\t')
     linecounter = 0
     for row in reader:
-        if float(row[10]) <= evalue:
+        if evalue1: 
+            if float(row[10]) <= evalue1:
+                qname = row[0].split("/")[-1]
+                tname = row[1]
+                if as_target:
+                    #populate target table
+                    if tname in returndict:
+                        if qname in returndict[tname]:
+                            returndict[tname][qname][linecounter] = rowfunc(row, ac3)
+                        else:
+                            returndict[tname][qname] = {linecounter: rowfunc(row, ac3)}
+                    else:
+                        returndict[tname] = {qname: {linecounter: rowfunc(row, ac3)}}
+                else:
+                    #populate query table
+                    if qname in returndict:
+                        if tname in returndict[qname]:
+                            returndict[qname][tname][linecounter] = rowfunc(row, ac3)
+                        else:
+                            returndict[qname][tname] = {linecounter: rowfunc(row, ac3)}
+                    else:
+                        returndict[qname] = {tname: {linecounter: rowfunc(row, ac3)}}
+            linecounter += 1
+        else:
             qname = row[0].split("/")[-1]
             tname = row[1]
-            #populate query table
-            if qname in querydict:
-                if tname in querydict[qname]:
-                    querydict[qname][tname][linecounter] = rowfunc(row, ac)
+            if as_target:
+                #populate target table
+                if tname in returndict:
+                    if qname in returndict[tname]:
+                        returndict[tname][qname][linecounter] = rowfunc(row, ac3)
+                    else:
+                        returndict[tname][qname] = {linecounter: rowfunc(row, ac3)}
                 else:
-                    querydict[qname][tname] = {linecounter: rowfunc(row, ac)}
+                    returndict[tname] = {qname: {linecounter: rowfunc(row, ac3)}}
             else:
-                querydict[qname] = {tname: {linecounter: rowfunc(row, ac)}}
-            #populate target table
-            if tname in targetdict:
-                if qname in targetdict[tname]:
-                    targetdict[tname][qname][linecounter] = rowfunc(row, ac)
+                #populate query table
+                if qname in returndict:
+                    if tname in returndict[qname]:
+                        returndict[qname][tname][linecounter] = rowfunc(row, ac3)
+                    else:
+                        returndict[qname][tname] = {linecounter: rowfunc(row, ac3)}
                 else:
-                    targetdict[tname][qname] = {linecounter: rowfunc(row, ac)}
-            else:
-                targetdict[tname] = {qname: {linecounter: rowfunc(row, ac)}}
-        linecounter += 1
+                    returndict[qname] = {tname: {linecounter: rowfunc(row, ac3)}}
+            linecounter += 1
     blastfile.close()
-    return querydict, targetdict
+    return returndict
 
 #WIP
 #nhmmer --tblout
@@ -199,10 +228,10 @@ def readblastfilefunc(b, cols, debugfile):
 #     hmmfile.close()
 #     return querydict, targetdict
 
+#for hammer search only forward search, so as query not needed
 #hmmsearch --domtblout
-def readhmmerfilefunc(b, cols, debugfile):
+def readhmmerfilefunc(b, evalue1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
-    querydict = {}
     targetdict = {}
     hmmfile = open(b, "rU")
     #reader = csv.reader(blastfile, delimiter='\t')
@@ -211,18 +240,9 @@ def readhmmerfilefunc(b, cols, debugfile):
     for row in hmmfile:
         if row[0] != "#":
             line = row.strip().split()
-            #print line, line[12]
-            if float(line[12]) <= evalue:
+            if float(line[12]) <= evalue1:
                 qname = line[3]+".fas"
                 tname = line[0]
-                #populate query table
-                if qname in querydict:
-                    if tname in querydict[qname]:
-                        querydict[qname][tname][linecounter] = hmmrowfunc(line)
-                    else:
-                        querydict[qname][tname] = {linecounter: hmmrowfunc(line)}
-                else:
-                    querydict[qname] = {tname: {linecounter: hmmrowfunc(line)}}
                 #populate target table
                 if tname in targetdict:
                     if qname in targetdict[tname]:
@@ -233,19 +253,18 @@ def readhmmerfilefunc(b, cols, debugfile):
                     targetdict[tname] = {qname: {linecounter: hmmrowfunc(line)}}
             linecounter += 1
     hmmfile.close()
-    return querydict, targetdict
+    return targetdict
 
-def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, cols, debugfile):
+def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, cols, debugfile):
     outdict = {}
-    for targetkey, targetval in inpdict[1].items():
+    for targetkey, targetval in inpdict.items():
         #run local actual reciprocal check (check each hit of target only matches one query)
         if local_rec == "actual":
             targetval = actual_reciprocator(targetval, metric, metricR)
         #run hit overlapper and sticher 
         #(cluster hits by direction and overlap on query target dif)
         #(hit stich by cluster)
-        tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, cols, debugfile) #stiched subcontigs per query
-        # sys.exit()
+        tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
         #run local range reciprocal check
         if local_rec == "range":
             tgt_proc_out = range_reciprocator(tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
@@ -266,13 +285,16 @@ def strand_selector(inpdict, metric, metricR):
             clusterR[hitkey] = hitval
     return [clusterF, clusterR]
     
-#work on later
+# !! fix it !! work on later
 def actual_reciprocator(inpdict, metric, metricR):
     for targetkey, targetval in inpdict[1].items():
         for querykey, queryval in targetval.items():
             inpdict[0][querykey]
 
-def hit_sticher(inpdict, metric, metricR, hit_overlap, cols, debugfile):
+
+## overall this code is bad and needs to be more function based
+
+def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
         clusters = strand_selector(queryval, metric, metricR)
@@ -286,7 +308,6 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, cols, debugfile):
                 #this is a hitlist {hit index: [hit val], 0: [2@@@22]}
                 hitdict = clusters[cluster_index]
                 messagefunc("best direction: "+str(direct), cols, debugfile)
-            
                 ovlp = True
                 #this part will overlap hits of same query=target areas, as well as remove spurious hits
                 #this will be a dict with {hit index as in hitlist: bucket}. -1 bucket for dumped hits
@@ -332,25 +353,65 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, cols, debugfile):
                                             else:
                                                 #keep only one, remove the other by removing from hitdict and bucketdict
                                                 if tovlp == qovlp:
-                                                    #print "both same overlap (compare with expansion of q and target), overlap, set bool to true"
-                                                    # print "check frames of two hits, if in frame, then keep, else remove the worst"
-                                                    startshift = abs(min(hitval[0], hitval[1])-min(hitdict[refhitkey][0], hitdict[refhitkey][1]))-1
-                                                    #double check, frame only works for some options!
-                                                    if startshift > 0 and startshift%3 == 0:
-                                                        # print "in frame, keep"
-                                                        hitdict[refhitkey] = [min(hitdict[refhitkey][0], hitval[0],hitdict[refhitkey][1], hitval[1]), max(hitdict[refhitkey][0], hitval[0],hitdict[refhitkey][1], hitval[1]), direct, min(hitdict[refhitkey][3], hitval[3],hitdict[refhitkey][4], hitval[4]), max(hitdict[refhitkey][3], hitval[3],hitdict[refhitkey][4], hitval[4]),(not direct),min(hitdict[refhitkey][6], hitval[6]),max(hitdict[refhitkey][7], hitval[7]),max(hitdict[refhitkey][8], hitval[8])]
+                                                    # check frame when translating options are used
+                                                    if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
+                                                        startshift = abs(min(hitval[0], hitval[1])-min(hitdict[refhitkey][0], hitdict[refhitkey][1]))-1
+                                                        if startshift > 0 and startshift%3 == 0:
+                                                            # in frame, extending range of refhit
+                                                            hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey])
+                                                            if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
+                                                                bucketdict[refhitkey] = nbuck
+                                                                nbuck += 1
+                                                            del hitdict[hitkey]
+                                                            if hitkey in bucketdict:
+                                                                del bucketdict[hitkey]
+                                                        else:
+                                                            # not in frame, removing worst
+                                                            comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
+                                                            if comp0 == 0 or comp0 == 2:
+                                                                print >> debugfile, hitdict[hitkey], "deleted"
+                                                                if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
+                                                                    bucketdict[refhitkey] = nbuck1
+                                                                    nbuck1 += 1
+                                                                del hitdict[hitkey]
+                                                                if hitkey in bucketdict:
+                                                                    del bucketdict[hitkey]
+                                                            else:
+                                                                print >> debugfile, hitdict[refhitkey], "deleted"
+                                                                if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
+                                                                    bucketdict[hitkey] = nbuck1
+                                                                    nbuck1 += 1
+                                                                del hitdict[refhitkey]
+                                                                if refhitkey in bucketdict:
+                                                                    del bucketdict[refhitkey]
+                                                    else:
+                                                        # frame does not matter for blastn, blastp, hmmer, extend
+                                                        hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey])
                                                         if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
                                                             bucketdict[refhitkey] = nbuck
                                                             nbuck += 1
                                                         del hitdict[hitkey]
                                                         if hitkey in bucketdict:
                                                             del bucketdict[hitkey]
-                                                    else:
-                                                        # print "not in frame, pick best"
-                                                        hitdict, bucketdict, nbuck = remove_worst(hitdict, bucketdict, nbuck, refhitkey, hitkey, debugfile)
                                                 else:
                                                     # print "target ovlp is larger than query, remove the worst, set bool to true"
-                                                    hitdict, bucketdict, nbuck = remove_worst(hitdict, bucketdict, nbuck, refhitkey, hitkey, debugfile)
+                                                    comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
+                                                    if comp0 == 0 or comp0 == 2:
+                                                        print >> debugfile, hitdict[hitkey], "deleted"
+                                                        if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
+                                                            bucketdict[refhitkey] = nbuck1
+                                                            nbuck1 += 1
+                                                        del hitdict[hitkey]
+                                                        if hitkey in bucketdict:
+                                                            del bucketdict[hitkey]
+                                                    else:
+                                                        print >> debugfile, hitdict[refhitkey], "deleted"
+                                                        if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
+                                                            bucketdict[hitkey] = nbuck1
+                                                            nbuck1 += 1
+                                                        del hitdict[refhitkey]
+                                                        if refhitkey in bucketdict:
+                                                            del bucketdict[refhitkey]
                                                 ovlp = True
                                                 break
                         if not ovlp:
@@ -368,29 +429,18 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, cols, debugfile):
                         if len(tempbuck) > 1:
                             #sort hits, pick best , 6--eval float(row[10]), 7--bit float(row[11]), 8--ident float(row[2])
                             bhit = -1
-                            #add distance assessment later too
-                            # mindist = 10000000 #very lame
-                            if metric == 'eval':
-                                # bscore = 1000
-                                # for htnm in range(len(tempbuck)):
-                                for htnm in tempbuck.keys():
-                                    if bhit == -1 or tempbuck[htnm][6] < bscore:
+                            bhitval = []
+                            for htnm in tempbuck.keys():
+                                if bhit == -1:
+                                    bhit = htnm
+                                    bhitval = tempbuck[htnm]
+                                else:
+                                    comp1 = compare_scores(bhitval[0:2],bhitval[6:9], tempbuck[htnm][0:2],tempbuck[htnm][6:9], metric, metricR)
+                                    #if tempbuck[htnm] is better. otherwise keep best as is
+                                    if comp1 == 1:
                                         bhit = htnm
-                                        bscore = tempbuck[htnm][6]
-                            elif metric == 'bit':
-                                # bscore = 0
-                                # for htnm in range(len(tempbuck)):
-                                for htnm in tempbuck.keys():
-                                    if bhit == -1 or tempbuck[htnm][7] > bscore:
-                                        bhit = htnm
-                                        bscore = tempbuck[htnm][7]
-                            elif metric == 'ident':
-                                # bscore = 0
-                                # for htnm in range(len(tempbuck)):
-                                for htnm in tempbuck.keys():
-                                    if bhit == -1 or tempbuck[htnm][8] > bscore:
-                                        bhit = htnm
-                                        bscore = tempbuck[htnm][8]
+                                        bhitval = tempbuck[htnm]
+                                        #potentially need breaking and restarting the loop?
                             sbctg.append(tempbuck[bhit]) #add best to subcontig
                             del bucketdict[bhit] #remove the best from further assessments
                             del hitdict[bhit] #same
@@ -406,92 +456,205 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, cols, debugfile):
                         break #exit while loop
                 #this part will stich hits of subcontigs
                 stiched_subcontigs = []
+                messagefunc("running hit sticher...", cols, debugfile)
                 for sbctg in subcontigs:
-                    #RUN STICHER and return margins and also sequence of regions and gaps
-                    messagefunc("running hit sticher...", cols, debugfile)
-                    #for a hit
-                    median_coords = {}
-                    start_coords = {}
-                    end_coords = {}
-                    start_target = {}
-                    end_target = {}
-                    eval_hit = {}
-                    bit_hit = {}
-                    ident_hit = {}
-                    for chunk in range(len(sbctg)):
-                        median_coords[chunk] = median([sbctg[chunk][3],sbctg[chunk][4]])
-                        start_coords[chunk] = min(sbctg[chunk][3],sbctg[chunk][4])
-                        end_coords[chunk] = max(sbctg[chunk][3],sbctg[chunk][4])
-                        start_target[chunk] = min(sbctg[chunk][0],sbctg[chunk][1])
-                        end_target[chunk] = max(sbctg[chunk][0],sbctg[chunk][1])
-                        eval_hit[chunk] = sbctg[chunk][6]
-                        if metricR:
-                            bit_hit[chunk] = sbctg[chunk][7]/abs(sbctg[chunk][0]-sbctg[chunk][1])
-                            ident_hit[chunk] = sbctg[chunk][8]/abs(sbctg[chunk][0]-sbctg[chunk][1])
-                        else:
-                            bit_hit[chunk] = sbctg[chunk][7]
-                            ident_hit[chunk] = sbctg[chunk][8]
-                        #populate subcontig eval = min eval
-                        eval_sbctg = min(eval_hit.values())
-                        #populate subcontig bit = max bit
-                        bit_sbctg = max(bit_hit.values())
-                        #populate subcontig ident = max ident
-                        ident_sbctg = max(ident_hit.values())
-                        #ranges
-                        start_target_subctg = min(start_target.values())
-                        end_target_subctg = max(end_target.values())
-                        start_query_subctg = min(start_coords.values())
-                        end_query_subctg = max(end_coords.values())
-                    gapstart = 0
-                    # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-                    stiched_subcontig = []
-                    stiched_subcontig.append([direct]) #add direction
-                    stiched_subcontig.append([eval_sbctg, bit_sbctg, ident_sbctg]) #add scores
-                    stiched_subcontig.append([start_target_subctg, end_target_subctg, start_query_subctg, end_query_subctg]) #add ranges
-                    #add per hit information
-                    stiched_hits = []
-                    for key in sorted(median_coords, key=lambda x: median_coords[x]):
-                        if gapstart > 0:
-                            stiched_hits.append(start_coords[key]-gapstart)
-                        stiched_hits.append([start_target[key], end_target[key], start_coords[key], end_coords[key], eval_hit[key], bit_hit[key], ident_hit[key]])
-                        gapstart = end_coords[key]
-                    stiched_subcontig.append(stiched_hits)
+                    stiched_subcontig = join_chunks(sbctg, direct)
                     stiched_subcontigs.append(stiched_subcontig)
             
             if len(clusters[cluster_index]) == 1:
-                #for a hit
-                stiched_subcontigs = []
-                median_coords = {}
-                start_coords = {}
-                end_coords = {}
-                start_target = {}
-                end_target = {}
-                eval_hit = {}
-                bit_hit = {}
-                ident_hit = {}
                 sbctg = clusters[cluster_index].values()
-                chunk = 0 #since only one hit
-                start_coords[chunk] = min(sbctg[chunk][3],sbctg[chunk][4])
-                end_coords[chunk] = max(sbctg[chunk][3],sbctg[chunk][4])
-                start_target[chunk] = min(sbctg[chunk][0],sbctg[chunk][1])
-                end_target[chunk] = max(sbctg[chunk][0],sbctg[chunk][1])
-                eval_hit[chunk] = sbctg[chunk][6]
-                if metricR:
-                    bit_hit[chunk] = sbctg[chunk][7]/abs(sbctg[chunk][0]-sbctg[chunk][1])
-                    ident_hit[chunk] = sbctg[chunk][8]/abs(sbctg[chunk][0]-sbctg[chunk][1])
-                else:
-                    bit_hit[chunk] = sbctg[chunk][7]
-                    ident_hit[chunk] = sbctg[chunk][8]
-                stiched_subcontig = []
-                stiched_subcontig.append([direct]) #add direction
-                stiched_subcontig.append([eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]]) #add scores
-                stiched_subcontig.append([start_target[chunk], end_target[chunk], start_coords[chunk], end_coords[chunk]]) #add ranges
-                stiched_subcontig.append([[start_target[chunk], end_target[chunk], start_coords[chunk], end_coords[chunk], eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]]]) #add the single hit
+                stiched_subcontig = join_chunks(sbctg, direct)
                 stiched_subcontigs.append(stiched_subcontig)
 
         for subcont_index in range(len(stiched_subcontigs)):
             returnlist[querykey+"@$"+str(subcont_index)] = stiched_subcontigs[subcont_index]
     return returnlist
+
+# potentially reinstate as a hit sticher shortening function
+# def remove_worst(hitdict1, bucketdict1, nbuck1, refhitkey, hitkey, debugfile):
+
+#all coordinates are returned in forward orientation, direction maintained by [direct]
+def join_chunks(sbctg1, direct1):
+    # print sbctg1, direct1
+    median_query = {}
+    start_query = {}
+    end_query = {}
+    start_target = {}
+    end_target = {}
+    eval_hit = {}
+    bit_hit = {}
+    ident_hit = {}
+    scores_sbctg1 = []
+    for chunk in range(len(sbctg1)):
+        median_query[chunk] = median([sbctg1[chunk][3],sbctg1[chunk][4]])
+        start_query[chunk] = min(sbctg1[chunk][3],sbctg1[chunk][4])
+        end_query[chunk] = max(sbctg1[chunk][3],sbctg1[chunk][4])
+        start_target[chunk] = min(sbctg1[chunk][0],sbctg1[chunk][1])
+        end_target[chunk] = max(sbctg1[chunk][0],sbctg1[chunk][1])
+        eval_hit[chunk] = sbctg1[chunk][6]
+        bit_hit[chunk] = sbctg1[chunk][7]
+        ident_hit[chunk] = sbctg1[chunk][8]
+        if chunk == 0:
+            scores_sbctg1 = [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]]
+        else:
+            #could use max score as an alternative
+            scores_sbctg1 = amalgamate_scores(scores_sbctg1, [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]])
+        #ranges
+        start_target_subctg = min(start_target.values())
+        end_target_subctg = max(end_target.values())
+        start_query_subctg = min(start_query.values())
+        end_query_subctg = max(end_query.values())
+    gapstart = 0
+    # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+    stiched_sbctg1 = []
+    stiched_sbctg1.append([direct1]) #add direction
+    stiched_sbctg1.append(scores_sbctg1) #add scores
+    stiched_sbctg1.append([start_target_subctg, end_target_subctg, start_query_subctg, end_query_subctg]) #add ranges
+    #add per hit information
+    stiched_hits = []
+    for key in sorted(median_query, key=lambda x: median_query[x]):
+        if gapstart > 0:
+            stiched_hits.append(start_query[key]-gapstart)
+        stiched_hits.append([start_target[key], end_target[key], start_query[key], end_query[key], eval_hit[key], bit_hit[key], ident_hit[key]])
+        gapstart = end_query[key]
+    stiched_sbctg1.append(stiched_hits)
+    # print stiched_sbctg1
+    return stiched_sbctg1
+
+#ideally unite with the previous function
+def join_contigs(inplist):
+    median_query = {}
+    start_query = {}
+    end_query = {}
+    target_dict = {}
+    for target in inplist:
+        median_query[target[0]] = median([min(target[1][2][2],target[1][2][3]),max(target[1][2][2],target[1][2][3])])
+        start_query[target[0]] = min(target[1][2][2],target[1][2][3])
+        end_query[target[0]] = max(target[1][2][2],target[1][2][3])
+        target_dict[target[0]] = target[1]
+    gapstart = 0
+    returnlist = []
+    start_query_superctg = min(start_query.values())
+    end_query_superctg = max(end_query.values())
+    for key in sorted(median_query, key=lambda x: median_query[x]):
+        if gapstart > 0:
+            returnlist.append(start_query[key]-gapstart)
+        returnlist.append([key,target_dict[key]])
+        gapstart = end_query[key]
+    return [start_query_superctg, end_query_superctg], returnlist
+
+# return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
+def extend_hit(item1, item2):
+    outlist = []    
+    scores = amalgamate_scores(item1[6:9], item2[6:9])
+    #using item1 as benchmark for resulting direction
+    direction1 = item1[2]
+    direction2 = item1[5]
+    #if ref item is True
+    if direction1:
+        outlist.append(min(item1[0], item2[0],item1[1], item2[1])) #min coord first
+        outlist.append(max(item1[0], item2[0],item1[1], item2[1])) #max coord second
+    else:
+        outlist.append(max(item1[0], item2[0],item1[1], item2[1])) #max coord first
+        outlist.append(min(item1[0], item2[0],item1[1], item2[1])) #min coord second
+    outlist.append(direction1)
+    #if query is true
+    if direction2:
+        outlist.append(min(item1[3], item1[4], item2[3], item2[4])) #min coord first
+        outlist.append(max(item1[3], item1[4], item2[3], item2[4])) #max coord second
+    else:
+        outlist.append(max(item1[3], item1[4], item2[3], item2[4])) #max coord first
+        outlist.append(min(item1[3], item1[4], item2[3], item2[4])) #min coord second
+    outlist.append(direction2)
+    for score in scores:
+        outlist.append(score)
+    return outlist
+
+# return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
+def amalgamate_scores(item1, item2):
+    neweval = item1[0] * item2[0] #probability product
+    newbit = item1[1] + item2[1] #sum of bits
+    newident = (item1[2] + item2[2]) / 2 #average of identities
+    return [neweval, newbit, newident]
+    
+
+def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, metricR):
+    #return 0 if first is better
+    #return 1 if second is better
+    #return 2 if they are equal
+    #metric [0,1,2] or [2,1,0]
+    len1 = float(max(item1ranges[0], item1ranges[1]) - min(item1ranges[0], item1ranges[1]))
+    len2 = float(max(item2ranges[0], item2ranges[1]) - min(item2ranges[0], item2ranges[1]))
+    if metricR:
+        eval1 = item1scores[0] / len1
+        bit1 = item1scores[1] / len1
+        ident1 =  item1scores[2] / len1
+        eval2 = item2scores[0] / len2
+        bit2 = item2scores[1] / len2
+        ident2 =  item2scores[2] / len2
+    else:
+        eval1 = item1scores[0]
+        bit1 = item1scores[1]
+        ident1 =  item1scores[2]
+        eval2 = item2scores[0]
+        bit2 = item2scores[1]
+        ident2 =  item2scores[2]
+    
+    metricL = [[eval1,eval2],[bit1,bit2],[ident1,ident2]]
+    #first (0)
+    #if 0 higher than 1
+    if metricL[metric[0]][0] > metricL[metric[0]][1]:
+        #if eval, return 1 as best
+        if metric[0] == 0:
+            return 1
+        #else return 0 as best
+        else:
+            return 0
+    elif metricL[metric[0]][0] < metricL[metric[0]][1]:
+        #if eval, return 0 as best
+        if metric[0] == 0:
+            return 0
+        #else return 1 as best
+        else:
+            return 1
+    #first order equal, try second order
+    else:
+        #if 0 higher than 1
+        if metricL[metric[1]][0] > metricL[metric[1]][1]:
+            #if eval, return 1 as best
+            if metric[1] == 0:
+                return 1
+            #else return 0 as best
+            else:
+                return 0
+        elif metricL[metric[1]][0] < metricL[metric[1]][1]:
+            #if eval, return 0 as best
+            if metric[1] == 0:
+                return 0
+            #else return 1 as best
+            else:
+                return 1
+        #second order equal, try third order
+        else:
+            #if 0 higher than 1
+            if metricL[metric[2]][0] > metricL[metric[2]][1]:
+                #if eval, return 1 as best
+                if metric[2] == 0:
+                    return 1
+                #else return 0 as best
+                else:
+                    return 0
+            elif metricL[metric[2]][0] < metricL[metric[2]][1]:
+                #if eval, return 0 as best
+                if metric[2] == 0:
+                    return 0
+                #else return 1 as best
+                else:
+                    return 1
+            #third order is equal, return 2
+            else:
+                return 2
+    
 
 
 def range_reciprocator(inpdict, metric, metricR, recip_overlap, cols, debugfile):
@@ -506,78 +669,31 @@ def range_reciprocator(inpdict, metric, metricR, recip_overlap, cols, debugfile)
                 current_query_range = inpdict[key][2]
                 current_query_scores = inpdict[key][1]
                 if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
-                    if metric == "eval":
-                        #first check eval
-                        if current_query_scores[0] < ref_query_scores[0]:
-                            cond = False
-                            messagefunc(" has better eval hit to "+key, cols, debugfile)
-                            break
-                        #then bit
-                        elif current_query_scores[0] == ref_query_scores[0]:
-                            if current_query_scores[1] > ref_query_scores[1]:
-                                cond = False
-                                messagefunc(" has better ref_query_scores[1] hit to "+key, cols, debugfile)
-                                break
-                            #then keep but warn
-                            elif current_query_scores[1] == ref_query_scores[1]:
-                                wrn = "warning, target "+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
-                                warninglist.append(wrn)
-                                messagefunc(wrn, cols, debugfile)
-                                messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
-                                messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
-                    elif metric == "bit":
-                        #first check bit
-                        if current_query_scores[1] > ref_query_scores[1]:
-                            cond = False
-                            messagefunc(" has better ref_query_scores[1] hit to "+key, cols, debugfile)
-                            break
-                        #then check eval
-                        elif current_query_scores[1] == ref_query_scores[1]:
-                            if current_query_scores[0] < ref_query_scores[0]:
-                                cond = False
-                                messagefunc(" has better eval hit to "+key, cols, debugfile)
-                                break
-                            #then keep but warn
-                            elif current_query_scores[0] == ref_query_scores[0]:
-                                wrn = "warning, target "+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
-                                warninglist.append(wrn)
-                                messagefunc(wrn, cols, debugfile)
-                                messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
-                                messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
-                    elif metric == "ident":
-                        #first check eval
-                        if current_query_scores[2] > ref_query_scores[2]:
-                            cond = False
-                            messagefunc(" has better ident hit to "+key, cols, debugfile)
-                            break
-                        #then bit
-                        elif current_query_scores[2] == ref_query_scores[2]:
-                            if current_query_scores[1] > ref_query_scores[1]:
-                                cond = False
-                                messagefunc(" has better ref_query_scores[1] hit to "+key, cols, debugfile)
-                                break
-                            #then keep but warn
-                            elif current_query_scores[1] == ref_query_scores[1]:
-                                wrn = "warning, target "+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
-                                warninglist.append(wrn)
-                                messagefunc(wrn, cols, debugfile)
-                                messagefunc("match to current query: ident "+str(ref_query_scores[2])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
-                                messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)    
+                    comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
+                    if comp1 == 1:
+                        cond = False
+                        messagefunc(" has better eval hit to "+key+" than to "+querykey, cols, debugfile)
+                        break
+                    elif comp1 == 2:
+                        wrn = "warning, target "+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
+                        warninglist.append(wrn)
+                        messagefunc(wrn, cols, debugfile)
+                        messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
+                        messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
         if cond: #only return good items
             returnlist[querykey] = queryval
     return returnlist
     
-def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, cols, debugfile):
+def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, cols, debugfile):
     returndict = {}
     # 1 reformat target table as query table
     # 2 run reference reciprocation: for each query each target must match back to query transcript from reference
-    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, cols, debugfile) #do steps 1 and 2
+    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile) #do steps 1 and 2
     # 3 for each query rank targets by scores
     # 4 run sticher, i.e. fill in size of query with contigs in best order, set aside, continue
     for querykey, queryval in query_dict.items():
         if len(queryval) > 1:
             targetlist = rank_targets(queryval, metric, metricR) # step 3
-            #need to do ranking again??
             stiched_targets = contig_sticher(targetlist, metric, metricR, contig_overlap, interstich, cols, debugfile) # step 4
         else:
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
@@ -589,14 +705,15 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
     return returndict
 
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
-def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, cols, debugfile):
+# stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
     returnlist = {}
     for targetkey, targetval in inpdict.items():
         # reciprocal search section
         for querykey, queryval in targetval.items():
             querykeynew, queryindex = querykey.split("@$")
             if rec_dict != None:
-                if reference_reciprocator(querykey, rec_dict, target_ref, metric, cols, debugfile):
+                if reference_reciprocator(querykey, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
                     if querykeynew in returnlist:
                         returnlist[querykeynew][targetkey+"_"+queryindex] = queryval
                     else:
@@ -608,70 +725,56 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, cols, debugfil
                     returnlist[querykeynew] = {targetkey+"_"+queryindex: queryval}
     return returnlist
 
-
-def reference_reciprocator(query, rec_dict, target_ref, metric, metricR, cols, debugfile):
+# returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
+# stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
     returnlist = {}
     cond = True
     # check out refence matches:
-    if query in target_ref[0]: #checking best contig for Q in reference
+    if query in target_ref: #checking best contig for Q in reference
         messagefunc("reference check", cols, debugfile)
         best_ref_name = []
         best_ref_val = None
-        for target_ref_name, target_ref_val in target_ref[0][query].items():
-            # messagefunc(target_ref_name, cols, debugfile)
-            ref_ranks_temp = compute_ranks(target_ref_val, metricR)
-            # messagefunc(" ".join([str(x) for x in ref_ranks_temp]), cols, debugfile)
-            if len(best_ref_name) == 0 and best_ref_val == None:
-                best_ref_name = [target_ref_name]
-                best_ref_val = ref_ranks_temp
-            else:
-                if metric == "eval":
-                    if ref_ranks_temp[0] < best_ref_val[0]:
+        #targets and values for the Q in the ref
+        for target_ref_name, target_ref_val in target_ref[query].items():
+            #this will have amalgamated scores and contig ranges for this target - compare with others
+            target_ref_val_stiched = hit_sticher(target_ref_val, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+            if getOverlap(queryval[2],target_ref_val_stiched[2]) > recip_overlap:
+                # the first overlapping region to consider
+                if len(best_ref_name) == 0 and best_ref_val == None:
+                    best_ref_name = [target_ref_name]
+                    best_ref_val = target_ref_val_stiched
+                # otherwise compare with already stored best - as with range reciprocator
+                else:
+                    comp1 = compare_scores(best_ref_val[2], best_ref_val[1], target_ref_val_stiched[2], target_ref_val_stiched[1], metric, metricR)
+                    if comp1 == 1:
                         best_ref_name = [target_ref_name]
-                        best_ref_val = ref_ranks_temp
-                    elif ref_ranks_temp[0] == best_ref_val[0]:
+                        best_ref_val = target_ref_val_stiched
+                    elif comp1 == 2:
                         best_ref_name.append(target_ref_name)
-                        best_ref_val = ref_ranks_temp
-                elif metric == "bit":
-                    if ref_ranks_temp[1] > best_ref_val[1]:
-                        best_ref_name = [target_ref_name]
-                        best_ref_val = ref_ranks_temp
-                    elif ref_ranks_temp[1] == best_ref_val[1]:
-                        best_ref_name.append(target_ref_name)
-                        best_ref_val = ref_ranks_temp
-                elif metric == "ident":
-                    if ref_ranks_temp[2] > best_ref_val[2]:
-                        best_ref_name = [target_ref_name]
-                        best_ref_val = ref_ranks_temp
-                    elif ref_ranks_temp[2] == best_ref_val[2]:
-                        best_ref_name.append(target_ref_name)
-                        best_ref_val = ref_ranks_temp
+                        best_ref_val = target_ref_val_stiched
         msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
         messagefunc(msg, cols, debugfile)
         # check out sample to reference matches
-        if target in rec_dict[0]: #checking for best contig for Q in current sample
+        if target in rec_dict: #checking for best contig for Q in current sample
             messagefunc("sample check", cols, debugfile)
             best_rec_name = None
             best_rec_val = None
-            for rec_target, rec_hits in rec_dict[0][target].items():
-                # messagefunc(rec_target, cols, debugfile)
-                rec_ranks_temp = compute_ranks(rec_hits, metricR)
-                if best_rec_name == None and best_rec_val == None:
-                    best_rec_name = rec_target
-                    best_rec_val = rec_ranks_temp
-                else:
-                    if metric == "eval":
-                        if rec_ranks_temp[0] < best_rec_val[0]:
+            for rec_target, rec_hits in rec_dict[target].items():
+                # stich all hits of sample target to reference target
+                rec_hits_stiched = hit_sticher(rec_hits, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+                # if same region as with Q:
+                if getOverlap(queryval[2],rec_hits_stiched[2]) > recip_overlap:
+                    # the first overlapping region to consider
+                    if best_rec_name == None and best_rec_val == None:
+                        best_rec_name = rec_target
+                        best_rec_val = rec_hits_stiched
+                    else:
+                        comp1 = compare_scores(best_rec_val[2], best_rec_val[1], target_ref_val_stiched[2], target_ref_val_stiched[1], metric, metricR)
+                        if comp1 == 1:
                             best_rec_name = rec_target
-                            best_rec_val = rec_ranks_temp
-                    elif metric == "bit":
-                        if rec_ranks_temp[1] > best_rec_val[1]:
-                            best_rec_name = rec_target
-                            best_rec_val = rec_ranks_temp
-                    elif metric == "ident":
-                        if rec_ranks_temp[2] > best_rec_val[2]:
-                            best_rec_name = rec_target
-                            best_rec_val = rec_ranks_temp
+                            best_rec_val = rec_hits_stiched
+                    # situation when two are equal is not considered
             msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
             messagefunc(msg, cols, debugfile)
             if best_rec_name not in best_ref_name:
@@ -691,49 +794,41 @@ def reference_reciprocator(query, rec_dict, target_ref, metric, metricR, cols, d
 # {target:[ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]}
 def rank_targets(inpdict, metric, metricR):
     returnlist = []
-    if metric == "eval":
-        metrickey = 0
-    elif metric == "bit":
-        metrickey = 1
-    if metric == "ident":
-        metrickey = 2
-    #iterate through sorted target dict
-    if metrickey == 0:
-        for targetkey in sorted(inpdict, key=lambda x: inpdict[x][1][metrickey],reverse=True):
-            returnlist.append([targetkey, inpdict[targetkey]])
-    else:
-        for targetkey in sorted(inpdict, key=lambda x: inpdict[x][1][metrickey], reverse=False):
-            returnlist.append([targetkey, inpdict[targetkey]])
+    processed_keys = set()
+    while len(processed_keys) < len(inpdict):
+        best_key = None
+        best_val = None
+        for targetkey, targetval in inpdict.items():
+            if targetkey not in processed_keys: #ignore already sorted
+                if best_key == None:
+                    best_key = targetkey
+                    best_val = targetval
+                else:
+                    comp1 = compare_scores(best_val[2], best_val[1], targetval[2], targetval[1], metric, metricR)
+                    if comp1 == 1:
+                        best_key = targetkey
+                        best_val = targetval
+        returnlist.append([best_key, best_val])
+        processed_keys.add(best_key)
     return returnlist
     # [target, [ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]]
 
-
 def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, debugfile):
     messagefunc("running contig sticher...", cols, debugfile)
-    if metric == "eval":
-        metrickey = 0
-    elif metric == "bit":
-        metrickey = 1
-    if metric == "ident":
-        metrickey = 2
     ctg_counter = 0
     returndict = {}
     returnlist = []
     removed_contigs = []
     while len(removed_contigs) < len(inplist):
         current_list = []
-        evals = []
-        bits = []
-        idents = []
+        supercontig_scores = []
         for contig1 in inplist:
             if contig1 not in removed_contigs:
                 if interstich:
                     if len(current_list) == 0:
                         current_list.append(contig1)
                         removed_contigs.append(contig1) #record processed target
-                        evals.append(contig1[1][1][0])
-                        bits.append(contig1[1][1][1])
-                        idents.append(contig1[1][1][2])
+                        supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
                     else:
                         cond = True
                         for contig2 in current_list:
@@ -744,69 +839,42 @@ def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, d
                         if cond:
                             current_list.append(contig1)
                             removed_contigs.append(contig1)
-                            evals.append(contig1[1][1][0])
-                            bits.append(contig1[1][1][1])
-                            idents.append(contig1[1][1][2])
+                            supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]])
                 else:
                     messagefunc("overlapping disabled", cols, debugfile)
                     current_list.append(contig1)
                     removed_contigs.append(contig1) #record processed target
-                    evals.append(contig1[1][1][0])
-                    bits.append(contig1[1][1][1])
-                    idents.append(contig1[1][1][2])
+                    supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
                     break
-            
-        #these are merged contig score calculation: improve!
-        scores = [min(evals), sum(bits), max(idents)]
         
         messagefunc("number of contigs: "+str(len(current_list)), cols, debugfile)
         if len(current_list) > 1:
-            #repeat the function from before?
-            median_coords = {}
-            start_coords = {}
-            end_coords = {}
-            target_dict = {}
-            for target in current_list:
-                messagefunc(target[0], cols, debugfile)
-                median_coords[target[0]] = median([min(target[1][2][2],target[1][2][3]),max(target[1][2][2],target[1][2][3])])
-                start_coords[target[0]] = min(target[1][2][2],target[1][2][3])
-                end_coords[target[0]] = max(target[1][2][2],target[1][2][3])
-                target_dict[target[0]] = target[1]
-            gapstart = 0
-            output = []
-            for key in sorted(median_coords, key=lambda x: median_coords[x]):
-                if gapstart > 0:
-                    output.append(start_coords[key]-gapstart)
-                # else:
-                #     output.append(0)
-                output.append([key,target_dict[key]])
-                gapstart = end_coords[key]
-            returndict[ctg_counter] = [scores, output]
+            supercontig_Qranges, supercontig_contigs = join_contigs(current_list)
+            returndict[ctg_counter] = [[True], supercontig_scores, supercontig_Qranges, supercontig_contigs]
             ctg_counter += 1
         else:
-            returndict[ctg_counter] = [scores, [current_list[0]]]
+            returndict[ctg_counter] = [[True], supercontig_scores, current_list[0][1][2][2:4], [current_list[0]]]
             ctg_counter += 1
-    if metrickey == 0:
-        for returnkey in sorted(returndict, key=lambda x: returndict[x][0][metrickey],reverse=True):
-            returnlist.append(returndict[returnkey])
-    else:
-        for returnkey in sorted(returndict, key=lambda x: returndict[x][0][metrickey],reverse=False):
-            returnlist.append(returndict[returnkey])
+    returnlist = rank_targets(returndict, metric, metricR)
+    
     return returnlist
+
+    # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
     
 def reformat_table(inpdict):
     returnlist = {}
     for querykey, queryval in inpdict.items():
-        # total[ contig[ score[ ], contigs[ contig [ name, info[ ]]]]]
-        #        N         N-0       N-1    N-1-M   N-1-M-0
+        # total[ contig[ dir[], score[ ], Qrange[], contigs[ contig [ name, info[ ]]]]]
+        #        N         N-0       N-1    N-2        N-3    N-3-M   N-3-M-0
+        # print "queryval",queryval
         for elemN in queryval: #elemN = N
-            for elemM in elemN[1]:
+            for elemM in elemN[1][3]:
                 if type(elemM) is not int:
                     targetname = "".join(elemM[0].split("_")[:-1])
                     if targetname in returnlist:
-                        returnlist[targetname].add(querykey)
+                        returnlist[targetname].append(querykey)
                     else:
-                        returnlist[targetname] = set([querykey])
+                        returnlist[targetname] = [querykey]
     return returnlist
 
 
@@ -823,37 +891,37 @@ def bltableout(output, bltableout_file, table_type):
 #query_f - query start, query_r - query end, query_b - query direction
 #blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
 #optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
-##### redo to divide by three in blastx case
+
 def rowfunc(row, aligntype):
     if int(row[8]) < int(row[9]):
         target_b = True
     else:
         target_b = False
-    if aligntype == "normal" or "tblastn":
-        target_f = int(row[8])
-        target_r = int(row[9])
-    else: #blastx
+    if aligntype == "tdna-aa":
         if target_b:
             target_f = int(row[8])*3-2
             target_r = int(row[9])*3
         else:
             target_f = int(row[8])*3
             target_r = int(row[9])*3-2
+    else:
+        target_f = int(row[8])
+        target_r = int(row[9])
     #check query
     if int(row[6]) < int(row[7]):
         query_b = True
     else:
         query_b = False
-    if aligntype == "normal" or "blastx":
-        query_f = int(row[6])
-        query_r = int(row[7])
-    else: #tblastn
+    if aligntype == "aa-tdna":
         if query_b:
             query_f = int(row[6])*3-2
             query_r = int(row[7])*3
         else:
             query_f = int(row[6])*3
             query_r = int(row[7])*3-2
+    else:
+        query_f = int(row[6])
+        query_r = int(row[7])
     return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
 
 # #nhmmer --tblout
@@ -892,43 +960,30 @@ def getOverlap(a, b):
     return max(0, min(a1, b1) - max(a0, b0))
 
 #function for appending the seqeunce to the alignemnt
-#returns 1 if success, 0 otherwise
-def seqwritefunc(sequence, qname, tname, seqname, noq,dir1):
-    if noq:
+def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lentarget):
+    if outM1 == "target":
         fhandle = open(dir1+"/"+tname, "a")
         finalseq = SeqRecord(sequence)
         finalseq.id = seqname
-    else:
+    elif outM1 == "query":
         fhandle = open(dir1+"/"+qname, "a")
         finalseq = SeqRecord(sequence)
-        if contignum == 1 or seqname == "none":
+        if contignum1 == 1 or seqname == "none":
             finalseq.id = tname
+        else:
+            finalseq.id = tname+"|"+seqname
+    elif outM1 == "combined":
+        fhandle = open(dir1+"/combined.fas", "a")
+        finalseq = SeqRecord(sequence)
+        if lentarget == 1:
+            finalseq.id = seqname
         else:
             finalseq.id = tname+"|"+seqname
     finalseq.name =""
     finalseq.description =""
     SeqIO.write(finalseq, fhandle, "fasta")
-    return 1
     fhandle.close()
 
-def remove_worst(hitdict1, bucketdict1, nbuck1, refhitkey, hitkey, debugfile):
-    if hitdict1[refhitkey][6] < hitdict1[hitkey][6] or hitdict1[refhitkey][7] > hitdict1[hitkey][7] or abs(hitdict1[refhitkey][0]-hitdict1[refhitkey][1]) >= abs(hitdict1[hitkey][0]-hitdict1[hitkey][1]):
-        print >> debugfile, hitdict1[hitkey], "deleted"
-        if refhitkey not in bucketdict1: #otherwise it must have already gotten the bucket number
-            bucketdict1[refhitkey] = nbuck1
-            nbuck1 += 1
-        del hitdict1[hitkey]
-        if hitkey in bucketdict1:
-            del bucketdict1[hitkey]
-    else:
-        print >> debugfile, hitdict1[refhitkey], "deleted"
-        if hitkey not in bucketdict1: #otherwise it must have already gotten the bucket number
-            bucketdict1[hitkey] = nbuck1
-            nbuck1 += 1
-        del hitdict1[refhitkey]
-        if refhitkey in bucketdict1:
-            del bucketdict1[refhitkey]
-    return hitdict1, bucketdict1, nbuck1
 
 def median(lst): #taken from https://stackoverflow.com/questions/24101524/finding-median-of-list-in-python
     n = len(lst)
@@ -940,7 +995,8 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
 
-def get_sequence(inplist, seq, extractiontype, fls, trans_out1):
+# translation can be done regardless of the mode, so might potentially try to translate AA - need to fix later on
+def get_sequence(inplist, seq, extractiontype, fls, trans_out1, metric, metricR):
     finalseq = Seq("")
     seqlen = len(seq.seq)
     direct = inplist[0][0]
@@ -949,53 +1005,29 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1):
     hits = inplist[3]
     if extractiontype == "a":
         for i in hits:
-            if trans_out1:
-                #translation
-                if type(i) is not int:
-                    start = min(i[0],i[1])-1
-                    end = max(i[0],i[1])
-                    # messagefunc("len to translate: "+str(len(seq.seq[start:end])), debugfile)
-                    if direct:
-                        # if len(seq.seq[start:end]) % 3 != 0:
-                        #     ## check which frame is best
-                        #     stops = []
-                        #     for frame in range(3):
-                        #         stops.append(seq.seq[(start+frame):end].translate().count("*"))
-                        #     messagefunc("min stop frame: "+str(min(stops)),debugfile)
-                        finalseq += seq.seq[start:end].translate()
-                    else:
-                        finalseq += seq.seq[start:end].reverse_complement().translate()
-                else:
-                    if i > 0:
-                        finalseq += Seq("X"*i)
-                    else:
-                        finalseq += Seq("X")
-            else:
-                if type(i) is not int:
-                    start = min(i[0],i[1])-1
-                    end = max(i[0],i[1])
-                    if direct:
-                        finalseq += seq.seq[start:end]
-                    else:
-                        finalseq += seq.seq[start:end].reverse_complement()
-                else:
-                    if i > 0:
-                        finalseq += Seq("N"*i)
-                    else:
-                        finalseq += Seq("N")
-    elif extractiontype == "b":
-        f1 = True
-        for i in hits:
             if type(i) is not int:
-                if f1:
-                    start = min(i[:2])
-                    end = max(i[:2])
-                    f1 = False
+                start = i[0]-1
+                end = i[1]
+                if direct:
+                    tempseq = seq.seq[start:end]
                 else:
-                    start = min(start, i[0], i[1])
-                    end = max(end, i[0], i[1])
-        start = start - 1
-        #fls implementation
+                    tempseq = seq.seq[start:end].reverse_complement()
+                if trans_out1:
+                    finalseq += tempseq.translate()
+                else:
+                    finalseq += tempseq
+            else:
+                if trans_out1:
+                    tempseq2 = "X"
+                else:
+                    tempseq2 = "N"
+                if i > 0:
+                    finalseq += Seq(tempseq2*i)
+                else:
+                    finalseq += Seq(tempseq2)
+    elif extractiontype == "b":
+        start = ranges[0]-1
+        end = ranges[1]
         if start - fls < 0:
             start = 0
         else:
@@ -1008,10 +1040,17 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1):
     elif extractiontype == "n":
         finalseq = seq.seq
     elif extractiontype == "s":
-        #THIS IS INCORRECT
-        start = min(hits[0][0],hits[0][1])-1
-        end = max(hits[0][0],hits[0][1])
-        #fls implementation
+        best_hit = None
+        for i in hits:
+            if type(i) is not int:
+                if best_hit == None:
+                    best_hit = i
+                else:
+                    comp1 = compare_scores(best_hit[0:2], best_hit[4:7], i[0:2], i[4:7], metric, metricR)
+                    if comp1 == 1:
+                        best_hit = i
+        start = best_hit[0]-1
+        end = best_hit[1]
         if start - fls < 0:
             start = 0
         else:
@@ -1020,23 +1059,20 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1):
             end = seqlen
         else:
             end = end + fls
-
-        if trans_out1:
-            #translation
-            if direct:
-                finalseq += seq.seq[start:end].translate()
-            else:
-                finalseq += seq.seq[start:end].reverse_complement().translate()
+        if direct:
+            tempseq = seq.seq[start:end]
         else:
-            if direct:
-                finalseq += seq.seq[start:end]
-            else:
-                finalseq += seq.seq[start:end].reverse_complement()
+            tempseq = seq.seq[start:end].reverse_complement()
+        if trans_out1:
+            finalseq += tempseq.translate()
+        else:
+            finalseq += tempseq
     if not direct and extractiontype != "a" and extractiontype != "s":
         finalseq = finalseq.reverse_complement()
     return finalseq
 
 def dumper(inplist, extractiontype):
+    #need to fix spacer as per alphabet
     finalseq = Seq("")
     for i in inplist:
         if type(i) is not int:
@@ -1047,11 +1083,73 @@ def dumper(inplist, extractiontype):
             else:
                 finalseq += Seq("N")
     return finalseq
+
+def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, cols1, debugfile1):
+    c1 = len(final_target_table1)
+    messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
+    target_set = set()
+    for seq in inputf1: #going over seqs in target file
+        if seq.id in final_target_table1: #if the seq in target file
+            seq_suffix_c = 1
+            for qname in final_target_table1[seq.id]: #checking queries of the target
+                for sprcontig in range(len(final_table1[qname])): #going over supercontig indexes
+                    num_contigs = len(final_table1[qname][sprcontig][1][3]) #number of contigs in supercontig
+                    for t in range(num_contigs): #looking for target in the query table
+                        if type(final_table1[qname][sprcontig][1][3][t]) is not int: #if not gap integer
+                            tgt_index_name = final_table1[qname][sprcontig][1][3][t][0]
+                            targetname = "".join(tgt_index_name.split("_")[:-1]) #process target name
+                            if targetname == seq.id and tgt_index_name not in target_set: #found target in the query table and this particular version of target wasnt used
+                                #get the sequence
+                                s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, metric, metricR)
+                                if num_contigs == 1:
+                                    #check if same target was used:
+                                    use_suffix = False
+                                    for ts in target_set:
+                                        if "".join(ts.split("_")[:-1]) == targetname:
+                                            use_suffix = True
+                                            seq_suffix_c += 1
+                                            break
+                                    if extractiontype1 == "n":
+                                        if not use_suffix:
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                        #else do nothing
+                                    else:
+                                        if use_suffix:
+                                            seqwritefunc(s1, qname, target_db_name1, targetname+"_"+str(seq_suffix_c), outM1, output_dir1, contignum1, append_name1)
+                                        else:
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                    target_set.add(tgt_index_name)
+                                else:
+                                    #need to disable contig stiching when n is selected
+                                    final_table1[qname][sprcontig][1][3][t][1] = s1
+                                    target_set.add(tgt_index_name)
+                                    #check the bucket
+                                    dump_bucket = True
+                                    for elem1 in final_table1[qname][sprcontig][1][3]:
+                                        if type(elem1) is not int:
+                                            if type(elem1[1]) is list:
+                                                dump_bucket = False
+                                                break
+                                    if dump_bucket:
+                                        # bucket filled, dump
+                                        s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1)
+                                        messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols1, debugfile1)
+                                        print >> debugfile1, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
+                                        seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, contignum1, append_name1)
+                                        # clean up
+                                        for subb in final_table1[qname][sprcontig][1][3]:
+                                            if type(subb) is not int:
+                                                subb[1] = ""
+            #clean up after all qs are done
+            del final_target_table1[seq.id]
+            c1 = c1 - 1
+        if len(final_target_table1) == 0:
+            messagefunc(str(c1)+" search finished", cols1, debugfile1, False)
+            break
 #---------------------------------------------------------------------#
 ############################ main script ##############################
 debugfile_generic = open("absx.log", "w")
 
-#### investigate if this works in batch!
 #get terminal window size
 if not os.popen('stty size', 'r').read():
     cols = 100
@@ -1062,15 +1160,6 @@ else:
 messagefunc("absx run with option "+filefolder+" selected", cols, debugfile_generic, False)
 messagefunc("command line parameters: "+' '.join(sys.argv), cols, debugfile_generic, False)
 
-#make modified dir
-if not dry_run:
-    messagefunc("make modified dir...", cols, debugfile_generic, False)
-    mkdirfunc(output_dir)
-
-#copy files
-if not noq:
-    messagefunc("copy files...", cols, debugfile_generic, False)
-    copyfunc(output_dir, cols, debugfile_generic)
 
 #multi db option
 if filefolder == "M":
@@ -1090,27 +1179,36 @@ elif filefolder == "S":
     if rec_search != None:
         rec_list = [rec_search]
 
+#dry / not dry run
 if dry_run:
     messagefunc("dry run, no target files", cols, debugfile_generic, False)
 else:
     messagefunc("list of target fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
     for l in translist:
         messagefunc(l, cols, debugfile_generic)
+    #make modified dir
+    messagefunc("make modified dir...", cols, debugfile_generic, False)
+    mkdirfunc(output_dir)
+    #copy files
+    if not noq:
+        messagefunc("copy files...", cols, debugfile_generic, False)
+        copyfunc(output_dir, cols, debugfile_generic)
 
+#reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, cols, debugfile_generic)
+    target_ref = readblastfilefunc(target_ref_file, evalue, False, cols, debugfile_generic)
 else:
     target_ref = None
 
-###perhaps some of these are no longer needed
-#debug vars
-number = 0
-numberset = set()
-totalloci = 0
+
 #parsing blast files
 messagefunc("parsing blast files...", cols, debugfile_generic, False)
 
 b1 = 0
+if len(blastlist) > 1:
+    append_name = True
+else:
+    append_name = False
 for b in blastlist:
     b1 += 1 #counter
     messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
@@ -1119,32 +1217,30 @@ for b in blastlist:
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
-        output = readblastfilefunc(b, cols, debugfile) #output 0 is query, 1 is target
+        output = readblastfilefunc(b, evalue, True, ac, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, cols, debugfile)
-    #read reciprocal alignment table, writing only as a debug really, commented out for now
+        output = readhmmerfilefunc(b, evalue, cols, debugfile)
+    #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
-            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", cols, debugfile)
-            # with open(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast_qtable.tab", "w") as rec_qout:
-            #     bltableout(rec_out[0],rec_qout, "query")
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, cols, debugfile)
         elif len(rec_list) == 1:
-            rec_out = readblastfilefunc(rec_list[0], cols, debugfile)
-            # with open(rec_list[0]+"_qtable.tab", "w") as rec_qout:
-            #     bltableout(rec_out[0], rec_qout, "query")
+            rec_out = readblastfilefunc(rec_list[0], None, False, cols, debugfile)
         else:
-            print "problem with reciprocal search file"
+            print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
             sys.exit()
     else:
         rec_out = None
+
     final_table = {}
     final_target_table = {}
+    
     #run target processor
-    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, cols, debugfile)
+    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, cols, debugfile)
     
     #run query processor
-    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, cols, debugfile)
+    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, cols, debugfile)
 
     final_target_table = reformat_table(final_table)
 
@@ -1180,54 +1276,8 @@ for b in blastlist:
             inputf = SeqIO.parse(seqname, "fasta")
             target_db_name = seqname.split("/")[-1]
         
-        c1 = len(final_target_table)
-        messagefunc("searching for contigs in: "+target_db_name+", total number of contigs: "+str(c1), cols, debugfile, False)
-        if noq:
-            target_set = set()
-        for seq in inputf: #going over seqs in target file
-            if seq.id in final_target_table: #looking up same seq in target file
-                for qname in final_target_table[seq.id]: #checking it's queries
-                    for sprcontig in range(len(final_table[qname])):
-                        for t in range(len(final_table[qname][sprcontig][1])): #looking for target in the query table
-                            if type(final_table[qname][sprcontig][1][t]) is not int:
-                                targetname = "".join(final_table[qname][sprcontig][1][t][0].split("_")[:-1])
-                                if targetname == seq.id: #found target in the query table
-                                    if len(final_table[qname][sprcontig][1]) == 1:
-                                        #extraction
-                                        messagefunc(str(c1)+" EXTRACTING: contig "+final_table[qname][sprcontig][1][t][0]+", query "+qname, cols, debugfile)
-                                        s1 = get_sequence(final_table[qname][sprcontig][1][t][1], seq, extractiontype, flanks, trans_out)
-                                        print >> debugfile, "- EXTRACTING: final seq", s1[:10], "ranges", final_table[qname][sprcontig][1][t][1]
-                                        if noq:
-                                            if seq.id not in target_set:
-                                                seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
-                                                target_set.add(seq.id)
-                                        else:
-                                            seqwritefunc(s1, qname,target_db_name, seq.id, noq, output_dir)
-                                    else:
-                                        s1 = get_sequence(final_table[qname][sprcontig][1][t][1], seq, extractiontype, flanks, trans_out)
-                                        final_table[qname][sprcontig][1][t][1] = s1
-                                        messagefunc(str(c1)+" BUCKET: contig "+final_table[qname][sprcontig][1][t][0]+", query "+qname, cols, debugfile)
-                                        dump_bucket = True
-                                        for elem1 in final_table[qname][sprcontig][1]:
-                                            if type(elem1) is not int:
-                                                if type(elem1[1]) is list:
-                                                    dump_bucket = False
-                                                    break
-                                        if dump_bucket:
-                                            # sys.exit()
-                                            s1 = dumper(final_table[qname][sprcontig][1], extractiontype)
-                                            messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols, debugfile)
-                                            print >> debugfile, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
-                                            seqwritefunc(s1, qname,target_db_name, "Merged_"+qname, noq,output_dir)
-                                            # cleanup
-                                            del final_table[qname][sprcontig][1][t]
-                                            break # breaking from target table
-                #clean up after all qs are done
-                del final_target_table[seq.id]
-                c1 = c1 - 1
-            if len(final_target_table) == 0:
-                messagefunc(str(c1)+" search finished", cols, debugfile, False)
-                break
+        process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, cols, debugfile)
+
     debugfile.close()
 
 print len(warninglist)
