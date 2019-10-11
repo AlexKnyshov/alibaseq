@@ -283,7 +283,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         if local_rec == "range":
             # messagefunc("input to range reciprocator:", cols, debugfile)
             # print >> debugfile, tgt_proc_out
-            tgt_proc_out = range_reciprocator(tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
+            tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
             # messagefunc("output of range reciprocator:", cols, debugfile)
             # print >> debugfile, tgt_proc_out
         outdict[targetkey] = tgt_proc_out
@@ -715,7 +715,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
     
 
 
-def range_reciprocator(inpdict, metric, metricR, recip_overlap, cols, debugfile):
+def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols, debugfile):
     returnlist = {} #all queries for the target go here
     querylist = inpdict.keys() #list of all queries
     for querykey, queryval in inpdict.items(): #queries for a given target
@@ -730,10 +730,10 @@ def range_reciprocator(inpdict, metric, metricR, recip_overlap, cols, debugfile)
                     comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
                     if comp1 == 1:
                         cond = False
-                        messagefunc(" has better eval hit to "+key+" than to "+querykey, cols, debugfile)
+                        messagefunc(targetkey1+" has better eval hit to "+key+" than to "+querykey, cols, debugfile)
                         break
                     elif comp1 == 2:
-                        wrn = "warning, target "+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
+                        wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
                         warninglist.append(wrn)
                         messagefunc(wrn, cols, debugfile)
                         messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
@@ -1227,7 +1227,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                             targetname = "_".join(tgt_index_name.split("_")[:-1]) #process target name
                             if targetname == seq.id and tgt_index_name not in target_set: #found target in the query table and this particular version of target wasnt used
                                 #get the sequence
-                                messagefunc(str(c1)+" EXTRACTING: contig "+final_table1[qname][sprcontig][1][3][t][0]+", query "+qname, cols1, debugfile1)
+                                messagefunc(str(c1)+" EXTRACTING: contig "+targetname+", query "+qname, cols1, debugfile1)
                                 s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, metric, metricR)
                                 print >> debugfile1, "- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1]
                                 if num_contigs == 1:
@@ -1251,7 +1251,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                 else:
                                     #need to disable contig stiching when n is selected
                                     final_table1[qname][sprcontig][1][3][t][1] = s1
-                                    messagefunc(str(c1)+" BUCKET: contig "+final_table1[qname][sprcontig][1][3][t][0]+", query "+qname, cols1, debugfile1)
+                                    messagefunc(str(c1)+" BUCKET: contig "+targetname+", query "+qname, cols1, debugfile1)
                                     target_set.add(tgt_index_name)
                                     #check the bucket
                                     dump_bucket = True
