@@ -42,6 +42,7 @@ optional.add_argument('-r', metavar='file/folder', help='reciprocal search outpu
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
+optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -97,6 +98,7 @@ else:
     ac = vars(args)["ac"]
     metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
+    ref_hs = vars(args)["ref_hs"]
 
     print blastfilearg, evalue, filefolder, extractiontype, contignum, local_rec, interstich, flanks, dry_run, noq
 
@@ -740,11 +742,11 @@ def range_reciprocator(inpdict, metric, metricR, recip_overlap, cols, debugfile)
             returnlist[querykey] = queryval
     return returnlist
     
-def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, cols, debugfile):
+def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
     returndict = {}
     # 1 reformat target table as query table
     # 2 run reference reciprocation: for each query each target must match back to query transcript from reference
-    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile) #do steps 1 and 2
+    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile) #do steps 1 and 2
     # 3 for each query rank targets by scores
     # 4 run sticher, i.e. fill in size of query with contigs in best order, set aside, continue
     for querykey, queryval in query_dict.items():
@@ -769,7 +771,7 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
 
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
+def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
     returnlist = {}
     for targetkey, targetval in inpdict.items():
         for querykey, queryval in targetval.items():
@@ -777,7 +779,7 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
             querykeynew, queryindex = querykey.split("@$")
             # reciprocal search section
             if rec_dict != None:
-                if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, cols, debugfile):
+                if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, ref_hs, cols, debugfile):
                     if querykeynew in returnlist:
                         returnlist[querykeynew][targetkey+"_"+queryindex] = queryval
                     else:
@@ -797,10 +799,13 @@ def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfi
         returndict[querykey] = stiched_hit_dict
     return returndict
 
+def simplified_aux_processing():
+    print "Test"
+
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
 
-def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, cols, debugfile):
+def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, ref_hs1, cols, debugfile):
     returnlist = {}
     cond = True
     #for a Q in the T, here are the regions
@@ -848,27 +853,47 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             best_rec_name = None
             best_rec_val = None
             for rec_target, rec_hits in rec_dict[targetkey1].items():
+                # print rec_hits, rec_target
+                # sys.exit()
                 # stich all hits of sample target to reference target
                 # print "reciprocal CALL"
                 # print rec_target,rec_hits
                 # rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
-                rec_target_base = rec_target.split("@$")[0]
-                # print rec_hits_stiched[rec_target+"@$0"]
-                # if same region as with Q:
-                # here we checking if it's the same region on query in forward table and reverse table, and then check best match
-                reciprocal_q_region = rec_hits[2][2:4]
-                reciprocal_t_region = rec_hits[2][0:2]
-                if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
-                    # the first overlapping region to consider
-                    if best_rec_name == None and best_rec_val == None:
-                        best_rec_name = rec_target_base
-                        best_rec_val = rec_hits
-                    else:
-                        comp1 = compare_scores(best_rec_val[2], best_rec_val[1], rec_hits[2], rec_hits[1], metric, metricR)
-                        if comp1 == 1:
+                if ref_hs1:
+                    rec_target_base = rec_target.split("@$")[0]
+                    # print rec_hits_stiched[rec_target+"@$0"]
+                    # if same region as with Q:
+                    # here we checking if it's the same region on query in forward table and reverse table, and then check best match
+                    reciprocal_q_region = rec_hits[2][2:4]
+                    reciprocal_t_region = rec_hits[2][0:2]
+                    if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
+                        # the first overlapping region to consider
+                        if best_rec_name == None and best_rec_val == None:
                             best_rec_name = rec_target_base
                             best_rec_val = rec_hits
-                    # situation when two are equal is not considered
+                        else:
+                            comp1 = compare_scores(best_rec_val[2], best_rec_val[1], rec_hits[2], rec_hits[1], metric, metricR)
+                            if comp1 == 1:
+                                best_rec_name = rec_target_base
+                                best_rec_val = rec_hits
+                        # situation when two are equal is not considered
+                else:
+                    rec_target_base = rec_target
+                    for hit_num, hit_val in rec_hits.items():
+                        reciprocal_q_region = hit_val[3:5]
+                        reciprocal_t_region = hit_val[0:2]
+                        if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
+                            # the first overlapping region to consider
+                            if best_rec_name == None and best_rec_val == None:
+                                best_rec_name = rec_target_base
+                                best_rec_val = hit_val
+                            else:
+                                comp1 = compare_scores(best_rec_val[0:2], best_rec_val[6:9], hit_val[0:2], hit_val[6:9], metric, metricR)
+                                if comp1 == 1:
+                                    best_rec_name = rec_target_base
+                                    best_rec_val = hit_val
+                            # situation when two are equal is not considered
+                
             if best_rec_name == None:
                 msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                 messagefunc(msg, cols, debugfile)
@@ -1330,10 +1355,12 @@ for b in blastlist:
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
             rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, cols, debugfile)
-            rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
+            if ref_hs:
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         elif len(rec_list) == 1:
             rec_out = readblastfilefunc(rec_list[0], None, False, ac, cols, debugfile)
-            rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
+            if ref_hs:
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
@@ -1348,7 +1375,7 @@ for b in blastlist:
     target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, cols, debugfile)
     
     #run query processor
-    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, cols, debugfile)
+    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, cols, debugfile)
 
     final_target_table = reformat_table(final_table, cols, debugfile)
 
