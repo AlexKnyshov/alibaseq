@@ -843,77 +843,75 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         if best_ref_val == None:
             msg = "no same region matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
             messagefunc(msg, cols, debugfile, False)
-            sys.exit()
-        msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
-        # reference_ref_region = best_ref_val[2][0:2]
-        messagefunc(msg, cols, debugfile)
-        # check out sample to reference matches
-        if targetkey1 in rec_dict: #checking for best contig for Q in current sample
-            messagefunc("sample check", cols, debugfile)
-            best_rec_name = None
-            best_rec_val = None
-            for rec_target, rec_hits in rec_dict[targetkey1].items():
-                # print rec_hits, rec_target
-                # sys.exit()
-                # stich all hits of sample target to reference target
-                # print "reciprocal CALL"
-                # print rec_target,rec_hits
-                # rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
-                if ref_hs1:
-                    rec_target_base = rec_target.split("@$")[0]
-                    # print rec_hits_stiched[rec_target+"@$0"]
-                    # if same region as with Q:
-                    # here we checking if it's the same region on query in forward table and reverse table, and then check best match
-                    reciprocal_q_region = rec_hits[2][2:4]
-                    reciprocal_t_region = rec_hits[2][0:2]
-                    if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
-                        # the first overlapping region to consider
-                        if best_rec_name == None and best_rec_val == None:
-                            best_rec_name = rec_target_base
-                            best_rec_val = rec_hits
-                        else:
-                            comp1 = compare_scores(best_rec_val[2], best_rec_val[1], rec_hits[2], rec_hits[1], metric, metricR)
-                            if comp1 == 1:
-                                best_rec_name = rec_target_base
-                                best_rec_val = rec_hits
-                        # situation when two are equal is not considered
-                else:
-                    rec_target_base = rec_target
-                    for hit_num, hit_val in rec_hits.items():
-                        reciprocal_q_region = hit_val[3:5]
-                        reciprocal_t_region = hit_val[0:2]
+        else:
+            msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
+            # reference_ref_region = best_ref_val[2][0:2]
+            messagefunc(msg, cols, debugfile)
+            # check out sample to reference matches
+            if targetkey1 in rec_dict: #checking for best contig for Q in current sample
+                messagefunc("sample check", cols, debugfile)
+                best_rec_name = None
+                best_rec_val = None
+                for rec_target, rec_hits in rec_dict[targetkey1].items():
+                    # print rec_hits, rec_target
+                    # sys.exit()
+                    # stich all hits of sample target to reference target
+                    # print "reciprocal CALL"
+                    # print rec_target,rec_hits
+                    # rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
+                    if ref_hs1:
+                        rec_target_base = rec_target.split("@$")[0]
+                        # print rec_hits_stiched[rec_target+"@$0"]
+                        # if same region as with Q:
+                        # here we checking if it's the same region on query in forward table and reverse table, and then check best match
+                        reciprocal_q_region = rec_hits[2][2:4]
+                        reciprocal_t_region = rec_hits[2][0:2]
                         if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
                             # the first overlapping region to consider
                             if best_rec_name == None and best_rec_val == None:
                                 best_rec_name = rec_target_base
-                                best_rec_val = hit_val
+                                best_rec_val = rec_hits
                             else:
-                                comp1 = compare_scores(best_rec_val[0:2], best_rec_val[6:9], hit_val[0:2], hit_val[6:9], metric, metricR)
+                                comp1 = compare_scores(best_rec_val[2], best_rec_val[1], rec_hits[2], rec_hits[1], metric, metricR)
                                 if comp1 == 1:
                                     best_rec_name = rec_target_base
-                                    best_rec_val = hit_val
+                                    best_rec_val = rec_hits
                             # situation when two are equal is not considered
-                
-            if best_rec_name == None:
-                msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
-                messagefunc(msg, cols, debugfile)
-                cond = False
-                # print sample_t_region, rec_dict[targetkey1],rec_hits_stiched #rec_dict[targetkey1], rec_hits#reciprocal_q_region
-                # sys.exit()
-            else:
-                msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
-                messagefunc(msg, cols, debugfile)
-                if best_rec_name not in best_ref_name:
+                    else:
+                        rec_target_base = rec_target
+                        for hit_num, hit_val in rec_hits.items():
+                            reciprocal_q_region = hit_val[3:5]
+                            reciprocal_t_region = hit_val[0:2]
+                            if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
+                                # the first overlapping region to consider
+                                if best_rec_name == None and best_rec_val == None:
+                                    best_rec_name = rec_target_base
+                                    best_rec_val = hit_val
+                                else:
+                                    comp1 = compare_scores(best_rec_val[0:2], best_rec_val[6:9], hit_val[0:2], hit_val[6:9], metric, metricR)
+                                    if comp1 == 1:
+                                        best_rec_name = rec_target_base
+                                        best_rec_val = hit_val
+                                # situation when two are equal is not considered
+                    
+                if best_rec_name == None:
+                    msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
+                    messagefunc(msg, cols, debugfile)
                     cond = False
-                    messagefunc("reciprocator: target "+targetkey1+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
-        else:
-            msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
-            messagefunc(msg, cols, debugfile)
-            sys.exit()
+                    # print sample_t_region, rec_dict[targetkey1],rec_hits_stiched #rec_dict[targetkey1], rec_hits#reciprocal_q_region
+                    # sys.exit()
+                else:
+                    msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
+                    messagefunc(msg, cols, debugfile)
+                    if best_rec_name not in best_ref_name:
+                        cond = False
+                        messagefunc("reciprocator: target "+targetkey1+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
+            else:
+                msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
+                messagefunc(msg, cols, debugfile)
     else:
         msg = "no matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
         messagefunc(msg, cols, debugfile)
-        sys.exit()
     return cond
 
 # {target:[[direction],[scores],[ranges],[[hit range and score], gap, etc]]}
