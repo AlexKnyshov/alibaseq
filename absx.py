@@ -258,16 +258,27 @@ def readhmmerfilefunc(b, evalue1, cols, debugfile):
 def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, cols, debugfile):
     outdict = {}
     for targetkey, targetval in inpdict.items():
+        messagefunc("######### PROCESSING TARGET "+targetkey+" #############", cols, debugfile)
+
         #run local actual reciprocal check (check each hit of target only matches one query)
         if local_rec == "actual":
             targetval = actual_reciprocator(targetval, metric, metricR)
         #run hit overlapper and sticher 
         #(cluster hits by direction and overlap on query target dif)
         #(hit stich by cluster)
+        # print "MAIN CALL",targetval
+        messagefunc("input to hit sticher :", cols, debugfile)
+        print >> debugfile, targetval
         tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+        messagefunc("output of hit sticher :", cols, debugfile)
+        print >> debugfile, tgt_proc_out
         #run local range reciprocal check
         if local_rec == "range":
+            messagefunc("input to range reciprocator:", cols, debugfile)
+            print >> debugfile, tgt_proc_out
             tgt_proc_out = range_reciprocator(tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
+            messagefunc("output of range reciprocator:", cols, debugfile)
+            print >> debugfile, tgt_proc_out
         outdict[targetkey] = tgt_proc_out
     return outdict
 
@@ -292,7 +303,43 @@ def actual_reciprocator(inpdict, metric, metricR):
             inpdict[0][querykey]
 
 
-## overall this code is bad and needs to be more function based
+# potentially reinstate as a hit sticher shortening function
+def sticher_helper(refhitkey1, hitkey1, hitdict1, bucketdict1, nbuck1, opt1, cols1, debugfile1):
+    if opt1 == "add":
+        #both are in hitdict, however may not be in bucketdict
+        #keep both, asign different buckets
+        if refhitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
+            bucketdict1[refhitkey1] = nbuck1
+            nbuck1 += 1
+        if hitkey1 not in bucketdict1: #same here
+            bucketdict1[hitkey1] = nbuck1
+            nbuck1 += 1
+    elif opt1 == "samebuck":
+        #both are in hitdict, if in bucketdict - assign same.
+        if refhitkey1 in bucketdict1: #if one present, the other must have not been checked before
+            bucketdict1[hitkey1] = bucketdict1[refhitkey1] #put in ref bucket
+        elif hitkey1 in bucketdict1:
+            bucketdict1[refhitkey1] = bucketdict1[hitkey1]
+        else:
+            bucketdict1[refhitkey1] = nbuck1
+            bucketdict1[hitkey1] = nbuck1
+        #no need to up the current bucket since only old buckets were worked with
+    elif opt1 == "rmhit":
+        if refhitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
+            bucketdict1[refhitkey1] = nbuck1
+            nbuck1 += 1
+        del hitdict1[hitkey1]
+        if hitkey1 in bucketdict1:
+            del bucketdict1[hitkey1]
+    elif opt1 == "rmref":
+        if hitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
+            bucketdict1[hitkey1] = nbuck1
+            nbuck1 += 1
+        del hitdict1[refhitkey1]
+        if refhitkey1 in bucketdict1:
+            del bucketdict1[refhitkey1]
+    return hitdict1, bucketdict1, nbuck1
+                                                    
 
 def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
     returnlist = {} #all queries for the target go here
@@ -333,23 +380,17 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                             ##process overlaps, only one option will work
                                             if tovlp == 0:
                                                 if 0 <= qovlp <= hit_overlap:
+                                                    # print "COND1"
                                                     ovlp = False
-                                                    if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                        bucketdict[refhitkey] = nbuck
-                                                        nbuck += 1
-                                                    if hitkey not in bucketdict: #same here
-                                                        bucketdict[hitkey] = nbuck
-                                                        nbuck += 1
-                                                    #keep both, asign different buckets
+                                                    hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "add", cols, debugfile)
+                                                    
                                                 #this is this case for subcontig splitter
                                                 elif qovlp > hit_overlap:
+                                                    # print "COND2"
                                                     #keep both but assign same bucket
                                                     ovlp = False
-                                                    if refhitkey in bucketdict: #if one present, the other must have not been checked before
-                                                        bucketdict[hitkey] = bucketdict[refhitkey] #put in ref bucket
-                                                    elif hitkey in bucketdict:
-                                                        bucketdict[refhitkey] = bucketdict[hitkey]
-                                                    #no need to up the current bucket since only old buckets were worked with
+                                                    hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "samebuck", cols, debugfile)
+                                                    
                                             else:
                                                 #keep only one, remove the other by removing from hitdict and bucketdict
                                                 if tovlp == qovlp:
@@ -357,66 +398,48 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                     if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
                                                         startshift = abs(min(hitval[0], hitval[1])-min(hitdict[refhitkey][0], hitdict[refhitkey][1]))-1
                                                         if startshift > 0 and startshift%3 == 0:
+                                                            # print "COND3"
                                                             # in frame, extending range of refhit
-                                                            hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey])
-                                                            if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                                bucketdict[refhitkey] = nbuck
-                                                                nbuck += 1
-                                                            del hitdict[hitkey]
-                                                            if hitkey in bucketdict:
-                                                                del bucketdict[hitkey]
+                                                            hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
+                                                            hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
+                                                            
                                                         else:
                                                             # not in frame, removing worst
                                                             comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                             if comp0 == 0 or comp0 == 2:
-                                                                print >> debugfile, hitdict[hitkey], "deleted"
-                                                                if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                                    bucketdict[refhitkey] = nbuck
-                                                                    nbuck += 1
-                                                                del hitdict[hitkey]
-                                                                if hitkey in bucketdict:
-                                                                    del bucketdict[hitkey]
+                                                                # print "COND4"
+                                                                print >> debugfile, hitdict[hitkey], "deleted4"
+                                                                hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
+                                                                
                                                             else:
-                                                                print >> debugfile, hitdict[refhitkey], "deleted"
-                                                                if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                                    bucketdict[hitkey] = nbuck
-                                                                    nbuck += 1
-                                                                del hitdict[refhitkey]
-                                                                if refhitkey in bucketdict:
-                                                                    del bucketdict[refhitkey]
+                                                                # print "COND5"
+                                                                print >> debugfile, hitdict[refhitkey], "deleted5"
+                                                                hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
+                                                                
                                                     else:
+                                                        # print "COND6"
                                                         # frame does not matter for blastn, blastp, hmmer, extend
-                                                        hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey])
-                                                        if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                            bucketdict[refhitkey] = nbuck
-                                                            nbuck += 1
-                                                        del hitdict[hitkey]
-                                                        if hitkey in bucketdict:
-                                                            del bucketdict[hitkey]
+                                                        hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
+                                                        hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
                                                 else:
                                                     # print "target ovlp is larger than query, remove the worst, set bool to true"
                                                     comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                     if comp0 == 0 or comp0 == 2:
-                                                        print >> debugfile, hitdict[hitkey], "deleted"
-                                                        if refhitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                            bucketdict[refhitkey] = nbuck
-                                                            nbuck += 1
-                                                        del hitdict[hitkey]
-                                                        if hitkey in bucketdict:
-                                                            del bucketdict[hitkey]
+                                                        # print "COND7"
+                                                        print >> debugfile, hitdict[hitkey], "deleted7",hitdict[refhitkey][6:9],hitdict[hitkey][6:9]
+                                                        hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
+
                                                     else:
-                                                        print >> debugfile, hitdict[refhitkey], "deleted"
-                                                        if hitkey not in bucketdict: #otherwise it must have already gotten the bucket number
-                                                            bucketdict[hitkey] = nbuck
-                                                            nbuck += 1
-                                                        del hitdict[refhitkey]
-                                                        if refhitkey in bucketdict:
-                                                            del bucketdict[refhitkey]
+                                                        # print "COND8"
+                                                        print >> debugfile, hitdict[refhitkey], "deleted8"
+                                                        hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
                                                 ovlp = True
+                                                # print hitdict, bucketdict
                                                 break
                         if not ovlp:
                             messagefunc("no more overlaps", cols, debugfile)
                 #this part will split hits into different subcontig clusters and
+                # print hitdict, bucketdict
                 subcontigs = [] #this will contain multiple subcontigs in case of splitting
                 while True:
                     sbctg = [] #this will contain hits of a particular subcontig, for future stiching
@@ -470,8 +493,7 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
             returnlist[querykey+"@$"+str(subcont_index)] = stiched_subcontigs[subcont_index]
     return returnlist
 
-# potentially reinstate as a hit sticher shortening function
-# def remove_worst(hitdict1, bucketdict1, nbuck1, refhitkey, hitkey, debugfile):
+
 
 #all coordinates are returned in forward orientation, direction maintained by [direct]
 def join_chunks(sbctg1, direct1):
@@ -544,9 +566,31 @@ def join_contigs(inplist):
     return [start_query_superctg, end_query_superctg], returnlist
 
 # return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
-def extend_hit(item1, item2):
+def extend_hit(item1, item2, tovlp):
     outlist = []    
-    scores = amalgamate_scores(item1[6:9], item2[6:9])
+    len1 = float(max(item1[0], item1[1]) - min(item1[0], item1[1]))
+    len2 = float(max(item2[0], item2[1]) - min(item2[0], item2[1]))
+    if len1 >= len2:
+        #item1 is better
+        penalty = (len2 - tovlp) / float(len2)
+        if penalty <= 0:
+            scores = item1[6:9]
+        else:
+            item_scores = item2[6:9]
+            item_scores[0] = item_scores[0] / penalty
+            item_scores[1] = item_scores[1] * penalty
+            scores = amalgamate_scores(item1[6:9], item_scores)
+    else:
+        #item2 is better
+        penalty = (len1 - tovlp) / float(len1)
+        if penalty <= 0:
+            scores = item2[6:9]
+        else:
+            item_scores = item1[6:9]
+            item_scores[0] = item_scores[0] / penalty
+            item_scores[1] = item_scores[1] * penalty
+            scores = amalgamate_scores(item_scores, item2[6:9])
+    # scores = (min(item1[6], item2[6]), max(item1[7], item2[7]), max(item1[8], item2[8]))
     #using item1 as benchmark for resulting direction
     direction1 = item1[2]
     direction2 = item1[5]
@@ -692,12 +736,19 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
     # 3 for each query rank targets by scores
     # 4 run sticher, i.e. fill in size of query with contigs in best order, set aside, continue
     for querykey, queryval in query_dict.items():
+        messagefunc("######### PROCESSING QUERY "+querykey+" #############", cols, debugfile)
         if len(queryval) > 1:
             targetlist = rank_targets(queryval, metric, metricR) # step 3
+            messagefunc("input to contig sticher:", cols, debugfile)
+            print >> debugfile, targetlist
             stiched_targets = contig_sticher(targetlist, metric, metricR, contig_overlap, interstich, cols, debugfile) # step 4
+            messagefunc("output of to contig sticher:", cols, debugfile)
+            print >> debugfile, stiched_targets
         else:
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
-            stiched_targets = [[reformatted_queryval[1][1],[reformatted_queryval]]]
+            stiched_targets = [[0, [[True], reformatted_queryval[1][1], reformatted_queryval[1][2],[reformatted_queryval]]]]
+            messagefunc("not fed to sticher", cols, debugfile)
+            print >> debugfile, stiched_targets
         # 5 get top [contignum] contigs from step 4, output
         if len(stiched_targets) > contignum and contignum > 0:
             stiched_targets = stiched_targets[:contignum]
@@ -709,11 +760,12 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
 def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
     returnlist = {}
     for targetkey, targetval in inpdict.items():
-        # reciprocal search section
         for querykey, queryval in targetval.items():
+            messagefunc("######### PROCESSING TARGET "+targetkey+" AND QUERY "+querykey+" #############", cols, debugfile)
             querykeynew, queryindex = querykey.split("@$")
+            # reciprocal search section
             if rec_dict != None:
-                if reference_reciprocator(querykey, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
+                if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, cols, debugfile):
                     if querykeynew in returnlist:
                         returnlist[querykeynew][targetkey+"_"+queryindex] = queryval
                     else:
@@ -727,19 +779,29 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
 
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, cols, debugfile):
+def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, cols, debugfile):
     returnlist = {}
     cond = True
+    #for a Q in the T, here are the regions
+    sample_q_region = queryval[2][2:4]
+    sample_t_region = queryval[2][0:2]
     # check out refence matches:
     if query in target_ref: #checking best contig for Q in reference
         messagefunc("reference check", cols, debugfile)
         best_ref_name = []
         best_ref_val = None
         #targets and values for the Q in the ref
+        # print target_ref[query].items()
         for target_ref_name, target_ref_val in target_ref[query].items():
             #this will have amalgamated scores and contig ranges for this target - compare with others
-            target_ref_val_stiched = hit_sticher(target_ref_val, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
-            if getOverlap(queryval[2],target_ref_val_stiched[2]) > recip_overlap:
+            # print "reference CALL", target_ref_val
+            target_ref_val_stiched = hit_sticher({target_ref_name: target_ref_val}, metric, metricR, hit_overlap, ac1, cols, debugfile)[target_ref_name+"@$0"] #stiched subcontigs per query
+            # print "queryval", queryval[2][2:4]
+            # print "target_ref_val_stiched",target_ref_val_stiched[2][2:4]
+            # only check same Q region in the reference
+            reference_q_region = target_ref_val_stiched[2][2:4]
+            reference_t_region = target_ref_val_stiched[2][0:2]
+            if getOverlap(sample_q_region,reference_q_region) > recip_overlap:
                 # the first overlapping region to consider
                 if len(best_ref_name) == 0 and best_ref_val == None:
                     best_ref_name = [target_ref_name]
@@ -753,18 +815,29 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                     elif comp1 == 2:
                         best_ref_name.append(target_ref_name)
                         best_ref_val = target_ref_val_stiched
+        if best_ref_val == None:
+            msg = "no same region matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
+            messagefunc(msg, cols, debugfile, False)
+            sys.exit()
         msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
+        # reference_ref_region = best_ref_val[2][0:2]
         messagefunc(msg, cols, debugfile)
         # check out sample to reference matches
-        if target in rec_dict: #checking for best contig for Q in current sample
+        if targetkey1 in rec_dict: #checking for best contig for Q in current sample
             messagefunc("sample check", cols, debugfile)
             best_rec_name = None
             best_rec_val = None
-            for rec_target, rec_hits in rec_dict[target].items():
+            for rec_target, rec_hits in rec_dict[targetkey1].items():
                 # stich all hits of sample target to reference target
-                rec_hits_stiched = hit_sticher(rec_hits, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+                # print "reciprocal CALL"
+                # print rec_target,rec_hits
+                rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
+                # print rec_hits_stiched[rec_target+"@$0"]
                 # if same region as with Q:
-                if getOverlap(queryval[2],rec_hits_stiched[2]) > recip_overlap:
+                # here we checking if it's the same region on query in forward table and reverse table, and then check best match
+                reciprocal_q_region = rec_hits_stiched[2][2:4]
+                reciprocal_t_region = rec_hits_stiched[2][0:2]
+                if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
                     # the first overlapping region to consider
                     if best_rec_name == None and best_rec_val == None:
                         best_rec_name = rec_target
@@ -775,17 +848,24 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                             best_rec_name = rec_target
                             best_rec_val = rec_hits_stiched
                     # situation when two are equal is not considered
-            msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
-            messagefunc(msg, cols, debugfile)
-            if best_rec_name not in best_ref_name:
+            if best_rec_name == None:
+                msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
+                messagefunc(msg, cols, debugfile)
                 cond = False
-                messagefunc("reciprocator: target "+target+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
+                # print sample_t_region, rec_dict[targetkey1],rec_hits_stiched #rec_dict[targetkey1], rec_hits#reciprocal_q_region
+                # sys.exit()
+            else:
+                msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
+                messagefunc(msg, cols, debugfile)
+                if best_rec_name not in best_ref_name:
+                    cond = False
+                    messagefunc("reciprocator: target "+targetkey1+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
         else:
-            msg = "no matches to ref in target [strange, possibly queries for forward and reciprocal search differ]"
+            msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
             messagefunc(msg, cols, debugfile)
             sys.exit()
     else:
-        msg = "no matches to query in ref [should not happen, possibly queries for forward and reciprocal search differ]"
+        msg = "no matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
         messagefunc(msg, cols, debugfile)
         sys.exit()
     return cond
@@ -861,16 +941,17 @@ def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, d
 
     # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
     
-def reformat_table(inpdict):
+def reformat_table(inpdict, cols, debugfile):
     returnlist = {}
     for querykey, queryval in inpdict.items():
+        messagefunc("######### PROCESSING QUERY "+querykey+" #############", cols, debugfile)
         # total[ contig[ dir[], score[ ], Qrange[], contigs[ contig [ name, info[ ]]]]]
         #        N         N-0       N-1    N-2        N-3    N-3-M   N-3-M-0
         # print "queryval",queryval
         for elemN in queryval: #elemN = N
             for elemM in elemN[1][3]:
                 if type(elemM) is not int:
-                    targetname = "".join(elemM[0].split("_")[:-1])
+                    targetname = "_".join(elemM[0].split("_")[:-1])
                     if targetname in returnlist:
                         returnlist[targetname].append(querykey)
                     else:
@@ -1097,15 +1178,17 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                     for t in range(num_contigs): #looking for target in the query table
                         if type(final_table1[qname][sprcontig][1][3][t]) is not int: #if not gap integer
                             tgt_index_name = final_table1[qname][sprcontig][1][3][t][0]
-                            targetname = "".join(tgt_index_name.split("_")[:-1]) #process target name
+                            targetname = "_".join(tgt_index_name.split("_")[:-1]) #process target name
                             if targetname == seq.id and tgt_index_name not in target_set: #found target in the query table and this particular version of target wasnt used
                                 #get the sequence
+                                messagefunc(str(c1)+" EXTRACTING: contig "+final_table1[qname][sprcontig][1][3][t][0]+", query "+qname, cols1, debugfile1)
                                 s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, metric, metricR)
+                                print >> debugfile1, "- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1]
                                 if num_contigs == 1:
                                     #check if same target was used:
                                     use_suffix = False
                                     for ts in target_set:
-                                        if "".join(ts.split("_")[:-1]) == targetname:
+                                        if "_".join(ts.split("_")[:-1]) == targetname:
                                             use_suffix = True
                                             seq_suffix_c += 1
                                             break
@@ -1122,6 +1205,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                 else:
                                     #need to disable contig stiching when n is selected
                                     final_table1[qname][sprcontig][1][3][t][1] = s1
+                                    messagefunc(str(c1)+" BUCKET: contig "+final_table1[qname][sprcontig][1][3][t][0]+", query "+qname, cols1, debugfile1)
                                     target_set.add(tgt_index_name)
                                     #check the bucket
                                     dump_bucket = True
@@ -1242,7 +1326,7 @@ for b in blastlist:
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, cols, debugfile)
 
-    final_target_table = reformat_table(final_table)
+    final_target_table = reformat_table(final_table, cols, debugfile)
 
     qout = open(b.split("/")[-1]+"_qtable.tab", "w")
     tout = open(b.split("/")[-1]+"_ttable.tab", "w")
