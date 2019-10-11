@@ -9,6 +9,8 @@ import sys
 import itertools
 import argparse
 
+import time
+
 
 parser = argparse.ArgumentParser(description='ABSX (Alignment-Based Sequence eXtraction)',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -267,20 +269,24 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         #(cluster hits by direction and overlap on query target dif)
         #(hit stich by cluster)
         # print "MAIN CALL",targetval
-        messagefunc("input to hit sticher :", cols, debugfile)
-        print >> debugfile, targetval
+        # messagefunc("input to hit sticher :", cols, debugfile)
+        # print >> debugfile, targetval
+        start = time.time()
         tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
-        messagefunc("output of hit sticher :", cols, debugfile)
-        print >> debugfile, tgt_proc_out
+        end = time.time()
+        print >> debugfile, "hit sticher time:", end - start
+        # messagefunc("output of hit sticher :", cols, debugfile)
+        # print >> debugfile, tgt_proc_out
         #run local range reciprocal check
         if local_rec == "range":
-            messagefunc("input to range reciprocator:", cols, debugfile)
-            print >> debugfile, tgt_proc_out
+            # messagefunc("input to range reciprocator:", cols, debugfile)
+            # print >> debugfile, tgt_proc_out
             tgt_proc_out = range_reciprocator(tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
-            messagefunc("output of range reciprocator:", cols, debugfile)
-            print >> debugfile, tgt_proc_out
+            # messagefunc("output of range reciprocator:", cols, debugfile)
+            # print >> debugfile, tgt_proc_out
         outdict[targetkey] = tgt_proc_out
     return outdict
+
 
 #only run for blastx, tblastn, tblastx; should not matter for blastn?
 #input is dictionary {linecounter: [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]}
@@ -354,10 +360,11 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                 messagefunc("running hit overlapper...", cols, debugfile)
                 #this is a hitlist {hit index: [hit val], 0: [2@@@22]}
                 hitdict = clusters[cluster_index]
-                messagefunc("best direction: "+str(direct), cols, debugfile)
+                messagefunc("best direction: "+str(direct)+", number of hits: "+str(len(clusters[cluster_index])), cols, debugfile)
                 ovlp = True
                 #this part will overlap hits of same query=target areas, as well as remove spurious hits
                 #this will be a dict with {hit index as in hitlist: bucket}. -1 bucket for dumped hits
+                start = time.time()
                 bucketdict = {}
                 nbuck = 0
                 while ovlp:
@@ -408,12 +415,12 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                             comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                             if comp0 == 0 or comp0 == 2:
                                                                 # print "COND4"
-                                                                print >> debugfile, hitdict[hitkey], "deleted4"
+                                                                # print >> debugfile, hitdict[hitkey], "deleted4"
                                                                 hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
                                                                 
                                                             else:
                                                                 # print "COND5"
-                                                                print >> debugfile, hitdict[refhitkey], "deleted5"
+                                                                # print >> debugfile, hitdict[refhitkey], "deleted5"
                                                                 hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
                                                                 
                                                     else:
@@ -426,18 +433,21 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                     comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                     if comp0 == 0 or comp0 == 2:
                                                         # print "COND7"
-                                                        print >> debugfile, hitdict[hitkey], "deleted7",hitdict[refhitkey][6:9],hitdict[hitkey][6:9]
+                                                        # print >> debugfile, hitdict[hitkey], "deleted7",hitdict[refhitkey][6:9],hitdict[hitkey][6:9]
                                                         hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
 
                                                     else:
                                                         # print "COND8"
-                                                        print >> debugfile, hitdict[refhitkey], "deleted8"
+                                                        # print >> debugfile, hitdict[refhitkey], "deleted8"
                                                         hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
                                                 ovlp = True
                                                 # print hitdict, bucketdict
                                                 break
                         if not ovlp:
                             messagefunc("no more overlaps", cols, debugfile)
+                end = time.time()
+                print >> debugfile, "hit sticher: hit clustering time", end - start, "clusters[cluster_index] length:", len(clusters[cluster_index])
+                start = time.time()
                 #this part will split hits into different subcontig clusters and
                 # print hitdict, bucketdict
                 subcontigs = [] #this will contain multiple subcontigs in case of splitting
@@ -477,6 +487,8 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                         subcontigs.append(sbctg)
                     else:
                         break #exit while loop
+                end = time.time()
+                print >> debugfile, "hit sticher: subcontig merging time", end - start
                 #this part will stich hits of subcontigs
                 stiched_subcontigs = []
                 messagefunc("running hit sticher...", cols, debugfile)
@@ -739,16 +751,16 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
         messagefunc("######### PROCESSING QUERY "+querykey+" #############", cols, debugfile)
         if len(queryval) > 1:
             targetlist = rank_targets(queryval, metric, metricR) # step 3
-            messagefunc("input to contig sticher:", cols, debugfile)
-            print >> debugfile, targetlist
+            # messagefunc("input to contig sticher:", cols, debugfile)
+            # print >> debugfile, targetlist
             stiched_targets = contig_sticher(targetlist, metric, metricR, contig_overlap, interstich, cols, debugfile) # step 4
-            messagefunc("output of to contig sticher:", cols, debugfile)
-            print >> debugfile, stiched_targets
+            # messagefunc("output of to contig sticher:", cols, debugfile)
+            # print >> debugfile, stiched_targets
         else:
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
             stiched_targets = [[0, [[True], reformatted_queryval[1][1], reformatted_queryval[1][2],[reformatted_queryval]]]]
-            messagefunc("not fed to sticher", cols, debugfile)
-            print >> debugfile, stiched_targets
+            # messagefunc("not fed to sticher", cols, debugfile)
+            # print >> debugfile, stiched_targets
         # 5 get top [contignum] contigs from step 4, output
         if len(stiched_targets) > contignum and contignum > 0:
             stiched_targets = stiched_targets[:contignum]
@@ -777,8 +789,17 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
                     returnlist[querykeynew] = {targetkey+"_"+queryindex: queryval}
     return returnlist
 
+
+def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
+    returndict = {}
+    for querykey, queryval in inpdict.items():
+        stiched_hit_dict = hit_sticher(queryval, metric, metricR, hit_overlap, ac2, cols, debugfile)
+        returndict[querykey] = stiched_hit_dict
+    return returndict
+
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+
 def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, cols, debugfile):
     returnlist = {}
     cond = True
@@ -794,27 +815,26 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         # print target_ref[query].items()
         for target_ref_name, target_ref_val in target_ref[query].items():
             #this will have amalgamated scores and contig ranges for this target - compare with others
-            # print "reference CALL", target_ref_val
-            target_ref_val_stiched = hit_sticher({target_ref_name: target_ref_val}, metric, metricR, hit_overlap, ac1, cols, debugfile)[target_ref_name+"@$0"] #stiched subcontigs per query
-            # print "queryval", queryval[2][2:4]
-            # print "target_ref_val_stiched",target_ref_val_stiched[2][2:4]
+            # target_ref_val_stiched = hit_sticher({target_ref_name: target_ref_val}, metric, metricR, hit_overlap, ac1, cols, debugfile)[target_ref_name+"@$0"] #stiched subcontigs per query
+            #these are one or more stiched hits
             # only check same Q region in the reference
-            reference_q_region = target_ref_val_stiched[2][2:4]
-            reference_t_region = target_ref_val_stiched[2][0:2]
+            target_ref_base_name = target_ref_name.split("@$")[0]
+            reference_q_region = target_ref_val[2][2:4]
+            reference_t_region = target_ref_val[2][0:2]
             if getOverlap(sample_q_region,reference_q_region) > recip_overlap:
                 # the first overlapping region to consider
                 if len(best_ref_name) == 0 and best_ref_val == None:
-                    best_ref_name = [target_ref_name]
-                    best_ref_val = target_ref_val_stiched
+                    best_ref_name = [target_ref_base_name]
+                    best_ref_val = target_ref_val
                 # otherwise compare with already stored best - as with range reciprocator
                 else:
-                    comp1 = compare_scores(best_ref_val[2], best_ref_val[1], target_ref_val_stiched[2], target_ref_val_stiched[1], metric, metricR)
+                    comp1 = compare_scores(best_ref_val[2], best_ref_val[1], target_ref_val[2], target_ref_val[1], metric, metricR)
                     if comp1 == 1:
-                        best_ref_name = [target_ref_name]
-                        best_ref_val = target_ref_val_stiched
+                        best_ref_name = [target_ref_base_name]
+                        best_ref_val = target_ref_val
                     elif comp1 == 2:
-                        best_ref_name.append(target_ref_name)
-                        best_ref_val = target_ref_val_stiched
+                        best_ref_name.append(target_ref_base_name)
+                        best_ref_val = target_ref_val
         if best_ref_val == None:
             msg = "no same region matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
             messagefunc(msg, cols, debugfile, False)
@@ -831,22 +851,23 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                 # stich all hits of sample target to reference target
                 # print "reciprocal CALL"
                 # print rec_target,rec_hits
-                rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
+                # rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
+                rec_target_base = rec_target.split("@$")[0]
                 # print rec_hits_stiched[rec_target+"@$0"]
                 # if same region as with Q:
                 # here we checking if it's the same region on query in forward table and reverse table, and then check best match
-                reciprocal_q_region = rec_hits_stiched[2][2:4]
-                reciprocal_t_region = rec_hits_stiched[2][0:2]
+                reciprocal_q_region = rec_hits[2][2:4]
+                reciprocal_t_region = rec_hits[2][0:2]
                 if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
                     # the first overlapping region to consider
                     if best_rec_name == None and best_rec_val == None:
-                        best_rec_name = rec_target
-                        best_rec_val = rec_hits_stiched
+                        best_rec_name = rec_target_base
+                        best_rec_val = rec_hits
                     else:
-                        comp1 = compare_scores(best_rec_val[2], best_rec_val[1], target_ref_val_stiched[2], target_ref_val_stiched[1], metric, metricR)
+                        comp1 = compare_scores(best_rec_val[2], best_rec_val[1], rec_hits[2], rec_hits[1], metric, metricR)
                         if comp1 == 1:
-                            best_rec_name = rec_target
-                            best_rec_val = rec_hits_stiched
+                            best_rec_name = rec_target_base
+                            best_rec_val = rec_hits
                     # situation when two are equal is not considered
             if best_rec_name == None:
                 msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
@@ -1281,6 +1302,7 @@ else:
 #reciprocal table input
 if rec_search != None:
     target_ref = readblastfilefunc(target_ref_file, evalue, False, ac, cols, debugfile_generic)
+    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, ac, cols, debugfile_generic)
 else:
     target_ref = None
 
@@ -1308,8 +1330,10 @@ for b in blastlist:
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
             rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, cols, debugfile)
+            rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         elif len(rec_list) == 1:
             rec_out = readblastfilefunc(rec_list[0], None, False, ac, cols, debugfile)
+            rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
