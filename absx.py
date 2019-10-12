@@ -20,7 +20,7 @@ optional = parser.add_argument_group('optional arguments')
 
 required.add_argument('-b', metavar='table', help='alignment table file',dest="blastfilearg",required=True)
 required.add_argument('-f', choices=['S','M'], help='file / folder mode',dest="filefolder", required=True)
-required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n (normal), s (only best hit region), a (extract all hit regions and join them), b (extract region between two outmost hit regions)',dest="extractiontype",required=True)
+required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n (whole contig), s (only best hit region), a (extract all hit regions and join them), b (extract region between two outmost hit regions)',dest="extractiontype",required=True)
 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
 optional.add_argument('-q', metavar='query', help='query file(s) to which extracted results are to be appended; if not specified, sequences are extracted into blank files',dest="queryf")
@@ -30,8 +30,8 @@ optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", typ
 optional.add_argument('-c', metavar='N', help='number of contigs to extract, if set to 0, then extract all contigs',dest="contignum", type=int, default=0)
 optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
 optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
-optional.add_argument('--is', dest='interstich', action='store_true', help='perform intercontig stiching', default=False)
-optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -et s or -et a)', default=False)
+optional.add_argument('--is', dest='interstich', action='store_true', help='perform contig stiching', default=False)
+optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -x s or -x a)', default=False)
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=int, default=5)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=int, default=1)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
@@ -908,6 +908,8 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                     if best_rec_name not in best_ref_name:
                         cond = False
                         messagefunc("reciprocator: target "+targetkey1+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
+                msg = "coordinates in forward search: "+" ".join([str(x) for x in queryval[2]])
+                messagefunc(msg, cols, debugfile)
             else:
                 msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                 messagefunc(msg, cols, debugfile)
