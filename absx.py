@@ -534,7 +534,8 @@ def join_chunks(sbctg1, direct1):
             scores_sbctg1 = [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]]
         else:
             #could use max score as an alternative
-            scores_sbctg1 = amalgamate_scores(scores_sbctg1, [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]])
+            scores_sbctg1 = [min(scores_sbctg1[0], eval_hit[chunk]), max(scores_sbctg1[1], bit_hit[chunk]), max(scores_sbctg1[2], ident_hit[chunk])]
+            # scores_sbctg1 = amalgamate_scores(scores_sbctg1, [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]])
         #ranges
         start_target_subctg = min(start_target.values())
         end_target_subctg = max(end_target.values())
@@ -582,29 +583,29 @@ def join_contigs(inplist):
 # return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
 def extend_hit(item1, item2, tovlp):
     outlist = []    
-    len1 = float(max(item1[0], item1[1]) - min(item1[0], item1[1]))
-    len2 = float(max(item2[0], item2[1]) - min(item2[0], item2[1]))
-    if len1 >= len2:
-        #item1 is better
-        penalty = (len2 - tovlp) / float(len2)
-        if penalty <= 0:
-            scores = item1[6:9]
-        else:
-            item_scores = item2[6:9]
-            item_scores[0] = item_scores[0] / penalty
-            item_scores[1] = item_scores[1] * penalty
-            scores = amalgamate_scores(item1[6:9], item_scores)
-    else:
-        #item2 is better
-        penalty = (len1 - tovlp) / float(len1)
-        if penalty <= 0:
-            scores = item2[6:9]
-        else:
-            item_scores = item1[6:9]
-            item_scores[0] = item_scores[0] / penalty
-            item_scores[1] = item_scores[1] * penalty
-            scores = amalgamate_scores(item_scores, item2[6:9])
-    # scores = (min(item1[6], item2[6]), max(item1[7], item2[7]), max(item1[8], item2[8]))
+    # len1 = float(max(item1[0], item1[1]) - min(item1[0], item1[1]))
+    # len2 = float(max(item2[0], item2[1]) - min(item2[0], item2[1]))
+    # if len1 >= len2:
+    #     #item1 is better
+    #     penalty = (len2 - tovlp) / float(len2)
+    #     if penalty <= 0:
+    #         scores = item1[6:9]
+    #     else:
+    #         item_scores = item2[6:9]
+    #         item_scores[0] = item_scores[0] / penalty
+    #         item_scores[1] = item_scores[1] * penalty
+    #         scores = amalgamate_scores(item1[6:9], item_scores)
+    # else:
+    #     #item2 is better
+    #     penalty = (len1 - tovlp) / float(len1)
+    #     if penalty <= 0:
+    #         scores = item2[6:9]
+    #     else:
+    #         item_scores = item1[6:9]
+    #         item_scores[0] = item_scores[0] / penalty
+    #         item_scores[1] = item_scores[1] * penalty
+    #         scores = amalgamate_scores(item_scores, item2[6:9])
+    scores = (min(item1[6], item2[6]), max(item1[7], item2[7]), max(item1[8], item2[8]))
     #using item1 as benchmark for resulting direction
     direction1 = item1[2]
     direction2 = item1[5]
@@ -731,6 +732,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
                     if comp1 == 1:
                         cond = False
                         messagefunc(targetkey1+" has better eval hit to "+key+" than to "+querykey, cols, debugfile)
+                        print >> debugfile, ref_query_range, ref_query_scores, current_query_range, current_query_scores
                         break
                     elif comp1 == 2:
                         wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
