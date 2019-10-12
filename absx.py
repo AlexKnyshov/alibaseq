@@ -6,11 +6,7 @@ import os
 import shutil
 import csv
 import sys
-import itertools
 import argparse
-
-import time
-
 
 parser = argparse.ArgumentParser(description='ABSX (Alignment-Based Sequence eXtraction)',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -35,9 +31,8 @@ optional.add_argument('--translate', dest='trans_out', action='store_true', help
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=int, default=5)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=int, default=1)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
-optional.add_argument('--bt', choices=['blast','hmmer'], help='alignment table type',dest="bt", default="blast")
+optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15'], help='alignment table type',dest="bt", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
-# will need to change the options above - account for hmmer, also account for translation possibility (dont try to translate proteins)
 optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
@@ -52,9 +47,32 @@ else:
 
     blastfilearg = vars(args)["blastfilearg"]
     filefolder = vars(args)["filefolder"]
-    extractiontype = vars(args)["extractiontype"]
-    if (extractiontype == "s" or extractiontype == "a") and vars(args)["trans_out"]:
-        trans_out = True
+    bt = vars(args)["bt"]
+    if bt == "hmmer18":
+        if vars(args)["extractiontype"] != "n":
+            print "only whole contig extraction is supported for hmmer18 tables, option -x ignored"
+        if vars(args)["ac"] != "aa-aa":
+            print "hmmer18 tables are only for AA vs AA search, option --ac ignored"
+        extractiontype = "n"
+        ac = "aa-aa"
+    elif bt == "hmmer15":
+        if vars(args)["ac"] != "dna-dna":
+            print "hmmer15 tables are only for DNA vs DNA search, option --ac ignored"
+        ac = "dna-dna"
+        extractiontype = vars(args)["extractiontype"]
+    else:
+        extractiontype = vars(args)["extractiontype"]
+
+    if vars(args)["trans_out"]:
+        if extractiontype == "s" or extractiontype == "a":
+            if ac == "aa-aa" or ac == "tdna-aa":
+                print "should not attempt to translate AA sequence, option --translate ignored"
+                trans_out = False
+            else:
+                trans_out = True
+        else:
+            print "will only translate exact matches (options -x s or -x a), option --translate ignored"
+            trans_out = False
     else:
         trans_out = False
 
@@ -88,30 +106,30 @@ else:
         else:
             target_ref_file = vars(args)["target_ref_file"]
     interstich = vars(args)["interstich"]
-    # allow_ovlp = vars(args)["allow_ovlp"]
+
     hit_ovlp = vars(args)["hit_ovlp"]
     ctg_ovlp = vars(args)["ctg_ovlp"]
     recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
-    bt = vars(args)["bt"]
     ac = vars(args)["ac"]
     metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
     ref_hs = vars(args)["ref_hs"]
 
-    print blastfilearg, evalue, filefolder, extractiontype, contignum, local_rec, interstich, flanks, dry_run, noq
 
-dash = "--------------------------------------------------------"
+dashb = "#"*75
+dash = "-"*50
 warninglist = []
 
+#function to display messages and write them into the debugfile
 def messagefunc(msg, columns, f, fl=True):
     if fl:
         sys.stdout.write((" "*columns)+"\r")
         sys.stdout.write(msg[:columns]+"\r")
         sys.stdout.flush()
     else:
-        print ""
+        sys.stdout.write((" "*columns)+"\r")
         print msg
     print >> f, msg
 
@@ -140,7 +158,7 @@ def copyfunc(dir1, cols, debugfile):
     messagefunc("copied "+str(copyfunc_c)+" files", cols, debugfile, False)
 
 #function for parsing a blast output file
-def readblastfilefunc(b, evalue1, as_target, ac3, cols, debugfile):
+def readblastfilefunc(b, evalue1, as_target, ac3, recstats, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     returndict = {}
     blastfile = open(b, "rU")
@@ -151,6 +169,9 @@ def readblastfilefunc(b, evalue1, as_target, ac3, cols, debugfile):
             if float(row[10]) <= evalue1:
                 qname = row[0].split("/")[-1]
                 tname = row[1]
+                if recstats:
+                    init_queries.add(qname)
+                    init_targets.add(tname)
                 if as_target:
                     #populate target table
                     if tname in returndict:
@@ -195,102 +216,140 @@ def readblastfilefunc(b, evalue1, as_target, ac3, cols, debugfile):
     blastfile.close()
     return returndict
 
-#WIP
-#nhmmer --tblout
-# def readhmmerfilefunc(b, debugfile):
-#     messagefunc("processing "+b, debugfile, False)
-#     querydict = {}
-#     targetdict = {}
-#     hmmfile = open(b, "rU")
-#     #reader = csv.reader(blastfile, delimiter='\t')
-#     linecounter = 0
-#     recordcounter = 0
-#     for row in hmmfile:
-#         if row[0] != "#":
-#             line = row.strip().split()
-#             #print line, line[12]
-#             if float(line[12]) <= evalue:
-#                 qname = line[2]+".fas"
-#                 tname = line[0]
-#                 #populate query table
-#                 if qname in querydict:
-#                     if tname in querydict[qname]:
-#                         querydict[qname][tname][linecounter] = hmmrowfunc(line)
-#                     else:
-#                         querydict[qname][tname] = {linecounter: hmmrowfunc(line)}
-#                 else:
-#                     querydict[qname] = {tname: {linecounter: hmmrowfunc(line)}}
-#                 #populate target table
-#                 if tname in targetdict:
-#                     if qname in targetdict[tname]:
-#                         targetdict[tname][qname][linecounter] = hmmrowfunc(line)
-#                     else:
-#                         targetdict[tname][qname] = {linecounter: hmmrowfunc(line)}
-#                 else:
-#                     targetdict[tname] = {qname: {linecounter: hmmrowfunc(line)}}
-#             linecounter += 1
-#     hmmfile.close()
-#     return querydict, targetdict
+#function to return a list for dict like this:
+#dict[query] = [target_f, target_r, target_b, query_f, query_r, query_b, eval, bitscore, identity]
+#query - query name, target_f - target start pos, target_r - target end, target_b - forward or reverse target direction
+#query_f - query start, query_r - query end, query_b - query direction
 
-#for hammer search only forward search, so as query not needed
-#hmmsearch --domtblout
-def readhmmerfilefunc(b, evalue1, cols, debugfile):
+def rowfunc(row, aligntype):
+    if int(row[8]) < int(row[9]):
+        target_b = True
+    else:
+        target_b = False
+    if aligntype == "tdna-aa":
+        if target_b:
+            target_f = int(row[8])*3-2
+            target_r = int(row[9])*3
+        else:
+            target_f = int(row[8])*3
+            target_r = int(row[9])*3-2
+    else:
+        target_f = int(row[8])
+        target_r = int(row[9])
+    #check query
+    if int(row[6]) < int(row[7]):
+        query_b = True
+    else:
+        query_b = False
+    if aligntype == "aa-tdna":
+        if query_b:
+            query_f = int(row[6])*3-2
+            query_r = int(row[7])*3
+        else:
+            query_f = int(row[6])*3
+            query_r = int(row[7])*3-2
+    else:
+        query_f = int(row[6])
+        query_r = int(row[7])
+    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
+
+
+#function for parsing hmmer output tables
+def readhmmerfilefunc(b, evalue1, bt1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     targetdict = {}
     hmmfile = open(b, "rU")
-    #reader = csv.reader(blastfile, delimiter='\t')
     linecounter = 0
     recordcounter = 0
+    if bt1 == "hmmer18":
+        qname1 = 2
+        tname1 = 0
+        eval1 = 4
+        bit1 = 5
+    elif bt1 == "hmmer15":
+        qname1 = 2
+        query1 = 4
+        query2 = 5
+        tname1 = 0
+        target1 = 6
+        target2 = 7
+        eval1 = 12
+        bit1 = 13
+    elif bt1 == "hmmer22":
+        qname1 = 3
+        query1 = 15
+        query2 = 16
+        tname1 = 0
+        target1 = 17
+        target2 = 18
+        eval1 = 12
+        bit1 = 13
     for row in hmmfile:
         if row[0] != "#":
             line = row.strip().split()
-            if float(line[12]) <= evalue1:
-                qname = line[3]+".fas"
-                tname = line[0]
+            if float(line[eval1]) <= evalue1:
+                qname = line[qname1]+".fas"
+                tname = line[tname1]
+                init_queries.add(qname)
+                init_targets.add(tname)
+                if bt1 != "hmmer18":
+                    if int(line[target1]) < int(line[target2]):
+                        target_b = True
+                    else:
+                        target_b = False
+                    if int(line[query1]) < int(line[query2]):
+                        query_b = True
+                    else:
+                        query_b = False
+                    target_f = int(line[target1])
+                    target_r = int(line[target2])
+                    query_f = int(line[query1])
+                    query_r = int(line[query2])
+                else:
+                    target_f = 0
+                    target_r = 1
+                    target_b = True
+                    query_f = 0
+                    query_r = 1
+                    query_b = True
+                #no identity is reported, so it is set to 0.0 and does not interfere with scoring system
+                outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
                 #populate target table
                 if tname in targetdict:
                     if qname in targetdict[tname]:
-                        targetdict[tname][qname][linecounter] = hmmrowfunc(line)
+                        targetdict[tname][qname][linecounter] = outrow
                     else:
-                        targetdict[tname][qname] = {linecounter: hmmrowfunc(line)}
+                        targetdict[tname][qname] = {linecounter: outrow}
                 else:
-                    targetdict[tname] = {qname: {linecounter: hmmrowfunc(line)}}
+                    targetdict[tname] = {qname: {linecounter: outrow}}
             linecounter += 1
     hmmfile.close()
     return targetdict
 
+#first main function
 def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, cols, debugfile):
+    messagefunc(dashb, cols, debugfile)
+    messagefunc("running target processor...", cols, debugfile)
     outdict = {}
     for targetkey, targetval in inpdict.items():
-        messagefunc("######### PROCESSING TARGET "+targetkey+" #############", cols, debugfile)
-
+        messagefunc(dash, cols, debugfile)
+        messagefunc("target processor on target "+targetkey, cols, debugfile)
         #run local actual reciprocal check (check each hit of target only matches one query)
-        if local_rec == "actual":
-            targetval = actual_reciprocator(targetval, metric, metricR)
+        if local_rec == "actual" and len(targetval) > 1:
+            messagefunc("running actual (per hit) reciprocity check", cols, debugfile)
+            targetval = actual_reciprocator(targetval,recip_overlap, metric, metricR)
         #run hit overlapper and sticher 
-        #(cluster hits by direction and overlap on query target dif)
-        #(hit stich by cluster)
-        # print "MAIN CALL",targetval
-        # messagefunc("input to hit sticher :", cols, debugfile)
-        # print >> debugfile, targetval
-        start = time.time()
+        messagefunc("running hit processor", cols, debugfile)
         tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
-        end = time.time()
-        print >> debugfile, "hit sticher time:", end - start
-        # messagefunc("output of hit sticher :", cols, debugfile)
-        # print >> debugfile, tgt_proc_out
         #run local range reciprocal check
         if local_rec == "range":
-            # messagefunc("input to range reciprocator:", cols, debugfile)
-            # print >> debugfile, tgt_proc_out
+            messagefunc("running range reciprocity check", cols, debugfile)
             tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
-            # messagefunc("output of range reciprocator:", cols, debugfile)
-            # print >> debugfile, tgt_proc_out
         outdict[targetkey] = tgt_proc_out
     return outdict
 
 
-#only run for blastx, tblastn, tblastx; should not matter for blastn?
+#function to split hits by strand (same vs opposite)
 #input is dictionary {linecounter: [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]}
 #return list of dictionaries
 def strand_selector(inpdict, metric, metricR):
@@ -304,14 +363,27 @@ def strand_selector(inpdict, metric, metricR):
             clusterR[hitkey] = hitval
     return [clusterF, clusterR]
     
-# !! fix it !! work on later
-def actual_reciprocator(inpdict, metric, metricR):
-    for targetkey, targetval in inpdict[1].items():
-        for querykey, queryval in targetval.items():
-            inpdict[0][querykey]
+#function to check that each target hit region matches to only one query
+def actual_reciprocator(inpdict, recip_overlap, metric, metricR):    
+    returndict = inpdict
+    for refquerykey, refqueryval in inpdict.items():
+        for refhit in refqueryval.keys():
+            refhit_t_range = refqueryval[refhit][0:2]
+            refhit_score = refqueryval[refhit][6:9]
+            for testquerykey, testqueryval in inpdict.items():
+                if testquerykey != refquerykey:
+                    for testhit in testqueryval.keys():
+                        testhit_t_range = testqueryval[testhit][0:2]
+                        testhit_score = testqueryval[testhit][6:9]
+                        if getOverlap(refhit_t_range, testhit_t_range) > recip_overlap:
+                            comp1 = compare_scores(refhit_t_range, refhit_score, testhit_t_range, testhit_score, metric, metricR)
+                            if comp1 == 0:
+                                del returndict[testquerykey][testhit]
+    return returndict
 
 
-# potentially reinstate as a hit sticher shortening function
+#helper function for hit sticher
+#get hit dictionary, bucket dictionary, and bucket counter, process and return these variables
 def sticher_helper(refhitkey1, hitkey1, hitdict1, bucketdict1, nbuck1, opt1, cols1, debugfile1):
     if opt1 == "add":
         #both are in hitdict, however may not be in bucketdict
@@ -348,7 +420,7 @@ def sticher_helper(refhitkey1, hitkey1, hitdict1, bucketdict1, nbuck1, opt1, col
             del bucketdict1[refhitkey1]
     return hitdict1, bucketdict1, nbuck1
                                                     
-
+#function to process hit of the same target (remove redundant, order and stich hits, make subcontigs)
 def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
@@ -360,13 +432,12 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
             #add conditions for no hits and just 1 hit
             if len(clusters[cluster_index]) > 1:
                 messagefunc("running hit overlapper...", cols, debugfile)
-                #this is a hitlist {hit index: [hit val], 0: [2@@@22]}
+                #this is a hitlist {hit index: [hit val]}
                 hitdict = clusters[cluster_index]
-                messagefunc("best direction: "+str(direct)+", number of hits: "+str(len(clusters[cluster_index])), cols, debugfile)
+                messagefunc("direction: "+str(direct)+", number of hits: "+str(len(clusters[cluster_index])), cols, debugfile)
                 ovlp = True
                 #this part will overlap hits of same query=target areas, as well as remove spurious hits
                 #this will be a dict with {hit index as in hitlist: bucket}. -1 bucket for dumped hits
-                start = time.time()
                 bucketdict = {}
                 nbuck = 0
                 while ovlp:
@@ -389,13 +460,11 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                             ##process overlaps, only one option will work
                                             if tovlp == 0:
                                                 if 0 <= qovlp <= hit_overlap:
-                                                    # print "COND1"
                                                     ovlp = False
                                                     hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "add", cols, debugfile)
                                                     
                                                 #this is this case for subcontig splitter
                                                 elif qovlp > hit_overlap:
-                                                    # print "COND2"
                                                     #keep both but assign same bucket
                                                     ovlp = False
                                                     hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "samebuck", cols, debugfile)
@@ -407,26 +476,20 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                     if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
                                                         startshift = abs(min(hitval[0], hitval[1])-min(hitdict[refhitkey][0], hitdict[refhitkey][1]))-1
                                                         if startshift > 0 and startshift%3 == 0:
-                                                            # print "COND3"
                                                             # in frame, extending range of refhit
                                                             hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
                                                             hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-                                                            
                                                         else:
                                                             # not in frame, removing worst
                                                             comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                             if comp0 == 0 or comp0 == 2:
-                                                                # print "COND4"
                                                                 # print >> debugfile, hitdict[hitkey], "deleted4"
                                                                 hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-                                                                
                                                             else:
-                                                                # print "COND5"
                                                                 # print >> debugfile, hitdict[refhitkey], "deleted5"
                                                                 hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
                                                                 
                                                     else:
-                                                        # print "COND6"
                                                         # frame does not matter for blastn, blastp, hmmer, extend
                                                         hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
                                                         hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
@@ -434,12 +497,10 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                     # print "target ovlp is larger than query, remove the worst, set bool to true"
                                                     comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
                                                     if comp0 == 0 or comp0 == 2:
-                                                        # print "COND7"
                                                         # print >> debugfile, hitdict[hitkey], "deleted7",hitdict[refhitkey][6:9],hitdict[hitkey][6:9]
                                                         hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
 
                                                     else:
-                                                        # print "COND8"
                                                         # print >> debugfile, hitdict[refhitkey], "deleted8"
                                                         hitdict, bucketdict, nbuck = sticher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
                                                 ovlp = True
@@ -447,9 +508,6 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                                                 break
                         if not ovlp:
                             messagefunc("no more overlaps", cols, debugfile)
-                end = time.time()
-                print >> debugfile, "hit sticher: hit clustering time", end - start, "clusters[cluster_index] length:", len(clusters[cluster_index])
-                start = time.time()
                 #this part will split hits into different subcontig clusters and
                 # print hitdict, bucketdict
                 subcontigs = [] #this will contain multiple subcontigs in case of splitting
@@ -489,8 +547,6 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                         subcontigs.append(sbctg)
                     else:
                         break #exit while loop
-                end = time.time()
-                print >> debugfile, "hit sticher: subcontig merging time", end - start
                 #this part will stich hits of subcontigs
                 stiched_subcontigs = []
                 messagefunc("running hit sticher...", cols, debugfile)
@@ -504,11 +560,10 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                 stiched_subcontigs.append(stiched_subcontig)
 
         for subcont_index in range(len(stiched_subcontigs)):
-            returnlist[querykey+"@$"+str(subcont_index)] = stiched_subcontigs[subcont_index]
+            returnlist[indexer_function(querykey,str(subcont_index))] = stiched_subcontigs[subcont_index]
     return returnlist
 
-
-
+#join chunks in correct order
 #all coordinates are returned in forward orientation, direction maintained by [direct]
 def join_chunks(sbctg1, direct1):
     # print sbctg1, direct1
@@ -558,7 +613,7 @@ def join_chunks(sbctg1, direct1):
     # print stiched_sbctg1
     return stiched_sbctg1
 
-#ideally unite with the previous function
+#function to join contigs in correct order
 def join_contigs(inplist):
     median_query = {}
     start_query = {}
@@ -580,7 +635,7 @@ def join_contigs(inplist):
         gapstart = end_query[key]
     return [start_query_superctg, end_query_superctg], returnlist
 
-# return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
+#function to merge overlapping hits. resulting hit gets highest score
 def extend_hit(item1, item2, tovlp):
     outlist = []    
     # len1 = float(max(item1[0], item1[1]) - min(item1[0], item1[1]))
@@ -629,19 +684,19 @@ def extend_hit(item1, item2, tovlp):
         outlist.append(score)
     return outlist
 
-# return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
+#function to combine scores (only used for contig combination for now)
 def amalgamate_scores(item1, item2):
     neweval = item1[0] * item2[0] #probability product
     newbit = item1[1] + item2[1] #sum of bits
     newident = (item1[2] + item2[2]) / 2 #average of identities
     return [neweval, newbit, newident]
     
-
+#function to compare scores of two items, takes ranges and scores
+#return 0 if first is better
+#return 1 if second is better
+#return 2 if they are equal
+#metric [0,1,2] or [2,1,0]
 def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, metricR):
-    #return 0 if first is better
-    #return 1 if second is better
-    #return 2 if they are equal
-    #metric [0,1,2] or [2,1,0]
     len1 = float(max(item1ranges[0], item1ranges[1]) - min(item1ranges[0], item1ranges[1]))
     len2 = float(max(item2ranges[0], item2ranges[1]) - min(item2ranges[0], item2ranges[1]))
     if metricR:
@@ -714,8 +769,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
             else:
                 return 2
     
-
-
+#function to check reciprocity based on whole ranges
 def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols, debugfile):
     returnlist = {} #all queries for the target go here
     querylist = inpdict.keys() #list of all queries
@@ -744,56 +798,68 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
             returnlist[querykey] = queryval
     return returnlist
     
+#second main function
 def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
     returndict = {}
     # 1 reformat target table as query table
     # 2 run reference reciprocation: for each query each target must match back to query transcript from reference
+    messagefunc(dashb, cols, debugfile)
     query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile) #do steps 1 and 2
     # 3 for each query rank targets by scores
     # 4 run sticher, i.e. fill in size of query with contigs in best order, set aside, continue
+    messagefunc(dashb, cols, debugfile)
     for querykey, queryval in query_dict.items():
-        messagefunc("######### PROCESSING QUERY "+querykey+" #############", cols, debugfile)
+        messagefunc(dash, cols, debugfile)
+        messagefunc("query processor on query "+querykey, cols, debugfile)
         if len(queryval) > 1:
+            messagefunc("rank targets", cols, debugfile)
             targetlist = rank_targets(queryval, metric, metricR) # step 3
-            # messagefunc("input to contig sticher:", cols, debugfile)
-            # print >> debugfile, targetlist
+            messagefunc("running contig sticher...", cols, debugfile)
             stiched_targets = contig_sticher(targetlist, metric, metricR, contig_overlap, interstich, cols, debugfile) # step 4
-            # messagefunc("output of to contig sticher:", cols, debugfile)
-            # print >> debugfile, stiched_targets
         else:
+            messagefunc("only one target, no ranking and stiching", cols, debugfile)
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
             stiched_targets = [[0, [[True], reformatted_queryval[1][1], reformatted_queryval[1][2],[reformatted_queryval]]]]
-            # messagefunc("not fed to sticher", cols, debugfile)
-            # print >> debugfile, stiched_targets
         # 5 get top [contignum] contigs from step 4, output
+        for tgt in stiched_targets:
+            if len(tgt[1][3]) == 1:
+                ctgn = "1"
+            else:
+                ctgn = str(int(len(tgt[1][3]) / 2 )+int(len(tgt[1][3]) % 2 ))
+            messagefunc("supercontig "+str(tgt[0])+", number of contigs: "+ctgn+", score "+" ".join([str(x) for x in tgt[1][1]]), cols, debugfile)
         if len(stiched_targets) > contignum and contignum > 0:
             stiched_targets = stiched_targets[:contignum]
+        messagefunc("subset by max number of contigs, "+str(len(stiched_targets))+" supercontig passed", cols, debugfile)
         returndict[querykey] = stiched_targets
     return returndict
 
+#function to reformat target based dict into query based, running reference reciprocity check along the way
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
 def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
+    messagefunc("reformatting dictionaries...", cols, debugfile)
     returnlist = {}
     for targetkey, targetval in inpdict.items():
         for querykey, queryval in targetval.items():
-            messagefunc("######### PROCESSING TARGET "+targetkey+" AND QUERY "+querykey+" #############", cols, debugfile)
-            querykeynew, queryindex = querykey.split("@$")
+            messagefunc(dash, cols, debugfile)
+            messagefunc("processing target "+targetkey+" and query "+querykey, cols, debugfile)
+            querykeynew, queryindex = indexer_function(querykey, None)
+            targetkeynew = indexer_function(targetkey, queryindex)
             # reciprocal search section
             if rec_dict != None:
                 if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, ref_hs, cols, debugfile):
                     if querykeynew in returnlist:
-                        returnlist[querykeynew][targetkey+"_"+queryindex] = queryval
+                        returnlist[querykeynew][targetkeynew] = queryval
                     else:
-                        returnlist[querykeynew] = {targetkey+"_"+queryindex: queryval}
+                        returnlist[querykeynew] = {targetkeynew: queryval}
             else:
                 if querykeynew in returnlist:
-                    returnlist[querykeynew][targetkey+"_"+queryindex] = queryval
+                    returnlist[querykeynew][targetkeynew] = queryval
                 else:
-                    returnlist[querykeynew] = {targetkey+"_"+queryindex: queryval}
+                    returnlist[querykeynew] = {targetkeynew: queryval}
     return returnlist
 
-
+#function to run hit sticher on reciprocal and reference tables
 def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
     returndict = {}
     for querykey, queryval in inpdict.items():
@@ -801,13 +867,11 @@ def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfi
         returndict[querykey] = stiched_hit_dict
     return returndict
 
-def simplified_aux_processing():
-    print "Test"
-
+#function to run reference based reciprocity check
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-
 def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, ref_hs1, cols, debugfile):
+    messagefunc("running reference based reciprocity check...", cols, debugfile)
     returnlist = {}
     cond = True
     #for a Q in the T, here are the regions
@@ -825,7 +889,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             # target_ref_val_stiched = hit_sticher({target_ref_name: target_ref_val}, metric, metricR, hit_overlap, ac1, cols, debugfile)[target_ref_name+"@$0"] #stiched subcontigs per query
             #these are one or more stiched hits
             # only check same Q region in the reference
-            target_ref_base_name = target_ref_name.split("@$")[0]
+            target_ref_base_name = indexer_function(target_ref_name, None)[0]
             reference_q_region = target_ref_val[2][2:4]
             reference_t_region = target_ref_val[2][0:2]
             if getOverlap(sample_q_region,reference_q_region) > recip_overlap:
@@ -845,9 +909,9 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         if best_ref_val == None:
             msg = "no same region matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
             messagefunc(msg, cols, debugfile, False)
+            warninglist.append(msg)
         else:
-            msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val])
-            # reference_ref_region = best_ref_val[2][0:2]
+            msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val[2]])+" ".join([str(x) for x in best_ref_val[1]])
             messagefunc(msg, cols, debugfile)
             # check out sample to reference matches
             if targetkey1 in rec_dict: #checking for best contig for Q in current sample
@@ -855,16 +919,8 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                 best_rec_name = None
                 best_rec_val = None
                 for rec_target, rec_hits in rec_dict[targetkey1].items():
-                    # print rec_hits, rec_target
-                    # sys.exit()
-                    # stich all hits of sample target to reference target
-                    # print "reciprocal CALL"
-                    # print rec_target,rec_hits
-                    # rec_hits_stiched = hit_sticher({rec_target: rec_hits}, metric, metricR, hit_overlap, ac1, cols, debugfile)[rec_target+"@$0"]#[query+"@$0"] #stiched subcontigs per query
                     if ref_hs1:
-                        rec_target_base = rec_target.split("@$")[0]
-                        # print rec_hits_stiched[rec_target+"@$0"]
-                        # if same region as with Q:
+                        rec_target_base = indexer_function(rec_target, None)[0]
                         # here we checking if it's the same region on query in forward table and reverse table, and then check best match
                         reciprocal_q_region = rec_hits[2][2:4]
                         reciprocal_t_region = rec_hits[2][0:2]
@@ -899,9 +955,8 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                 if best_rec_name == None:
                     msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                     messagefunc(msg, cols, debugfile)
+                    warninglist.append(msg)
                     cond = False
-                    # print sample_t_region, rec_dict[targetkey1],rec_hits_stiched #rec_dict[targetkey1], rec_hits#reciprocal_q_region
-                    # sys.exit()
                 else:
                     msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
                     messagefunc(msg, cols, debugfile)
@@ -913,11 +968,14 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             else:
                 msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                 messagefunc(msg, cols, debugfile)
+                warninglist.append(msg)
     else:
         msg = "no matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
         messagefunc(msg, cols, debugfile)
+        warninglist.append(msg)
     return cond
 
+#function to rank targets based on their scores
 # {target:[[direction],[scores],[ranges],[[hit range and score], gap, etc]]}
 # {target:[ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]}
 def rank_targets(inpdict, metric, metricR):
@@ -941,8 +999,8 @@ def rank_targets(inpdict, metric, metricR):
     return returnlist
     # [target, [ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]]
 
+#function to check if contigs are overlapping and call functions to merge contigs, their scores, and rank supercontigs after operation is completed
 def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, debugfile):
-    messagefunc("running contig sticher...", cols, debugfile)
     ctg_counter = 0
     returndict = {}
     returnlist = []
@@ -974,8 +1032,6 @@ def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, d
                     removed_contigs.append(contig1) #record processed target
                     supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
                     break
-        
-        messagefunc("number of contigs: "+str(len(current_list)), cols, debugfile)
         if len(current_list) > 1:
             supercontig_Qranges, supercontig_contigs = join_contigs(current_list)
             returndict[ctg_counter] = [[True], supercontig_scores, supercontig_Qranges, supercontig_contigs]
@@ -988,95 +1044,33 @@ def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, d
     return returnlist
 
     # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-    
+
+#function to subset final table and output it in target based format
 def reformat_table(inpdict, cols, debugfile):
     returnlist = {}
     for querykey, queryval in inpdict.items():
-        messagefunc("######### PROCESSING QUERY "+querykey+" #############", cols, debugfile)
+        survived_queries.add(querykey)
         # total[ contig[ dir[], score[ ], Qrange[], contigs[ contig [ name, info[ ]]]]]
         #        N         N-0       N-1    N-2        N-3    N-3-M   N-3-M-0
         # print "queryval",queryval
         for elemN in queryval: #elemN = N
             for elemM in elemN[1][3]:
                 if type(elemM) is not int:
-                    targetname = "_".join(elemM[0].split("_")[:-1])
+                    targetname = indexer_function(elemM[0], None)[0]
+                    survived_targets.add(targetname)
                     if targetname in returnlist:
                         returnlist[targetname].append(querykey)
                     else:
                         returnlist[targetname] = [querykey]
     return returnlist
 
-
+#function to output final tables into files
 def bltableout(output, bltableout_file, table_type):
     for key, value in sorted(output.items()):
         if table_type == "target":
             print >> bltableout_file, key+","+str(len(value))+","+",".join(value)
         elif table_type == "query":
             print >> bltableout_file, key, value
-
-#function to return a list for dict like this:
-#dict[query] = [target_f, target_r, target_b, query_f, query_r, query_b, eval, bitscore]
-#query - query name, target_f - target start pos, target_r - target end, target_b - forward or reverse target direction
-#query_f - query start, query_r - query end, query_b - query direction
-#blastn, tblastx, blastp = 1 to 1; tblastn = aa in query, dna in db; blastx = dna in query, aa in db. hmmer is always 1 to 1.
-#optional.add_argument('-ac', choices=['normal','tblastn', 'blastx'], help='alignment coordinate type',dest="ac", default="normal")
-
-def rowfunc(row, aligntype):
-    if int(row[8]) < int(row[9]):
-        target_b = True
-    else:
-        target_b = False
-    if aligntype == "tdna-aa":
-        if target_b:
-            target_f = int(row[8])*3-2
-            target_r = int(row[9])*3
-        else:
-            target_f = int(row[8])*3
-            target_r = int(row[9])*3-2
-    else:
-        target_f = int(row[8])
-        target_r = int(row[9])
-    #check query
-    if int(row[6]) < int(row[7]):
-        query_b = True
-    else:
-        query_b = False
-    if aligntype == "aa-tdna":
-        if query_b:
-            query_f = int(row[6])*3-2
-            query_r = int(row[7])*3
-        else:
-            query_f = int(row[6])*3
-            query_r = int(row[7])*3-2
-    else:
-        query_f = int(row[6])
-        query_r = int(row[7])
-    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]
-
-# #nhmmer --tblout
-# def hmmrowfunc(row):
-#     if row[11] == "+":
-#         target_b = True
-#     else:
-#         target_b = False
-#     target_f = int(row[8])
-#     target_r = int(row[9])
-#     #check query
-#     query_b = True
-#     query_f = int(row[4])
-#     query_r = int(row[5])
-#     return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[12]), float(row[13])]
-
-#hmmsearch --domtblout   
-def hmmrowfunc(row):
-    target_b = True
-    target_f = int(row[17])
-    target_r = int(row[18])
-    #check query
-    query_b = True
-    query_f = int(row[15])
-    query_r = int(row[16])
-    return [target_f, target_r, target_b, query_f, query_r, query_b, float(row[12]), float(row[13])]
 
 
 #function to compute overlap between two ranges supplied as lists with start and end
@@ -1088,7 +1082,7 @@ def getOverlap(a, b):
     b1=max(b)
     return max(0, min(a1, b1) - max(a0, b0))
 
-#function for appending the seqeunce to the alignemnt
+#function for writing actual sequence to file
 def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lentarget):
     if outM1 == "target":
         fhandle = open(dir1+"/"+tname, "a")
@@ -1113,8 +1107,9 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lenta
     SeqIO.write(finalseq, fhandle, "fasta")
     fhandle.close()
 
-
-def median(lst): #taken from https://stackoverflow.com/questions/24101524/finding-median-of-list-in-python
+#function to compute median
+#taken from https://stackoverflow.com/questions/24101524/finding-median-of-list-in-python
+def median(lst):
     n = len(lst)
     if n < 1:
             return None
@@ -1124,8 +1119,8 @@ def median(lst): #taken from https://stackoverflow.com/questions/24101524/findin
             return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
 
-# translation can be done regardless of the mode, so might potentially try to translate AA - need to fix later on
-def get_sequence(inplist, seq, extractiontype, fls, trans_out1, metric, metricR):
+#function to extract sequence from file and modify it
+def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, metricR):
     finalseq = Seq("")
     seqlen = len(seq.seq)
     direct = inplist[0][0]
@@ -1146,7 +1141,7 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, metric, metricR)
                 else:
                     finalseq += tempseq
             else:
-                if trans_out1:
+                if trans_out1 or ac2 == "aa-aa" or ac2 == "tdna-aa":
                     tempseq2 = "X"
                 else:
                     tempseq2 = "N"
@@ -1200,20 +1195,26 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, metric, metricR)
         finalseq = finalseq.reverse_complement()
     return finalseq
 
-def dumper(inplist, extractiontype):
+#function to join contig sequences and output final sequence
+def dumper(inplist, extractiontype, trans_out2, ac2):
     #need to fix spacer as per alphabet
     finalseq = Seq("")
+    if trans_out2 or ac2 == "aa-aa" or ac2 == "tdna-aa":
+        gapsymbol = "X"
+    else:
+        gapsymbol = "N"
     for i in inplist:
         if type(i) is not int:
             finalseq += i[1]
         else:
             if i > 0 and extractiontype != "n":
-                finalseq += Seq("N"*i)
+                finalseq += Seq(gapsymbol*i)
             else:
-                finalseq += Seq("N")
+                finalseq += Seq(gapsymbol)
     return finalseq
 
-def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, cols1, debugfile1):
+#function to control sequence processing
+def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, cols1, debugfile1):
     c1 = len(final_target_table1)
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
     target_set = set()
@@ -1226,17 +1227,17 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                     for t in range(num_contigs): #looking for target in the query table
                         if type(final_table1[qname][sprcontig][1][3][t]) is not int: #if not gap integer
                             tgt_index_name = final_table1[qname][sprcontig][1][3][t][0]
-                            targetname = "_".join(tgt_index_name.split("_")[:-1]) #process target name
+                            targetname = indexer_function(tgt_index_name, None)[0] #process target name
                             if targetname == seq.id and tgt_index_name not in target_set: #found target in the query table and this particular version of target wasnt used
                                 #get the sequence
                                 messagefunc(str(c1)+" EXTRACTING: contig "+targetname+", query "+qname, cols1, debugfile1)
-                                s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, metric, metricR)
+                                s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, ac1, metric, metricR)
                                 print >> debugfile1, "- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1]
                                 if num_contigs == 1:
                                     #check if same target was used:
                                     use_suffix = False
                                     for ts in target_set:
-                                        if "_".join(ts.split("_")[:-1]) == targetname:
+                                        if indexer_function(ts, None)[0] == targetname:
                                             use_suffix = True
                                             seq_suffix_c += 1
                                             break
@@ -1246,7 +1247,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                         #else do nothing
                                     else:
                                         if use_suffix:
-                                            seqwritefunc(s1, qname, target_db_name1, targetname+"_"+str(seq_suffix_c), outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, contignum1, append_name1)
                                         else:
                                             seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
                                     target_set.add(tgt_index_name)
@@ -1264,7 +1265,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                                 break
                                     if dump_bucket:
                                         # bucket filled, dump
-                                        s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1)
+                                        s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1, trans_out1, ac1)
                                         messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols1, debugfile1)
                                         print >> debugfile1, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
                                         seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, contignum1, append_name1)
@@ -1278,6 +1279,36 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
         if len(final_target_table1) == 0:
             messagefunc(str(c1)+" search finished", cols1, debugfile1, False)
             break
+
+#function to encode repeating keys and decode them later on
+def indexer_function(base1, index1):
+    if index1 != None:
+        #encode
+        return base1+"@"+index1
+    else:
+        #decode
+        splitlist = base1.split("@")
+        if len(splitlist) == 2:
+            return splitlist[0], splitlist[1]
+        else:
+            #if @$ was used inside, rejoin but without last element
+            return "@".join(splitlist[:-1]), splitlist[-1]
+
+#function to estimate how many queries and targets from the original tables survived
+def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile):
+    msg = "number of queries with OK results: "+str(len(survived_queries))
+    messagefunc(msg, cols, debugfile, False)
+    msg = "number of queries without OK results: "+str(len(init_queries - survived_queries))
+    messagefunc(msg, cols, debugfile, False)
+    print >> debugfile, "empty query list:"
+    print >> debugfile, " ".join(list(init_queries - survived_queries))
+    msg = "number of passed targets: "+str(len(survived_targets))
+    messagefunc(msg, cols, debugfile, False)
+    msg = "number of filtered out targets: "+str(len(init_targets - survived_targets))
+    messagefunc(msg, cols, debugfile, False)
+    # print >> debugfile, "filtered out targets:"
+    # print >> debugfile, " ".join(list(init_targets - survived_targets))
+
 #---------------------------------------------------------------------#
 ############################ main script ##############################
 debugfile_generic = open("absx.log", "w")
@@ -1328,7 +1359,7 @@ else:
 
 #reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, evalue, False, ac, cols, debugfile_generic)
+    target_ref = readblastfilefunc(target_ref_file, evalue, False, ac, False, cols, debugfile_generic)
     target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, ac, cols, debugfile_generic)
 else:
     target_ref = None
@@ -1344,23 +1375,27 @@ else:
     append_name = False
 for b in blastlist:
     b1 += 1 #counter
+    init_queries = set()
+    init_targets = set()
+    survived_queries = set()
+    survived_targets = set()
     messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
     debugfile = open(b.split("/")[-1]+"_absx.log", "w")
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
-        output = readblastfilefunc(b, evalue, True, ac, cols, debugfile) #output 0 is query, 1 is target
+        output = readblastfilefunc(b, evalue, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, evalue, cols, debugfile)
+        output = readhmmerfilefunc(b, evalue, bt, cols, debugfile)
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
-            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, cols, debugfile)
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, False, cols, debugfile)
             if ref_hs:
                 rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         elif len(rec_list) == 1:
-            rec_out = readblastfilefunc(rec_list[0], None, False, ac, cols, debugfile)
+            rec_out = readblastfilefunc(rec_list[0], None, False, ac, False, cols, debugfile)
             if ref_hs:
                 rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         else:
@@ -1380,6 +1415,8 @@ for b in blastlist:
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, cols, debugfile)
 
     final_target_table = reformat_table(final_table, cols, debugfile)
+
+    estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile)
 
     qout = open(b.split("/")[-1]+"_qtable.tab", "w")
     tout = open(b.split("/")[-1]+"_ttable.tab", "w")
@@ -1413,7 +1450,7 @@ for b in blastlist:
             inputf = SeqIO.parse(seqname, "fasta")
             target_db_name = seqname.split("/")[-1]
         
-        process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, cols, debugfile)
+        process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
 
     debugfile.close()
 
