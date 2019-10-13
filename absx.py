@@ -38,6 +38,8 @@ optional.add_argument('-R', metavar='file', help='target locus to reference cont
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
+#add possibility of single blast file and multiple fasta files
+#tied to that is extension in the query name (*.fas)
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -364,6 +366,7 @@ def strand_selector(inpdict, metric, metricR):
     return [clusterF, clusterR]
     
 #function to check that each target hit region matches to only one query
+# !!! implement direction check for translated searches
 def actual_reciprocator(inpdict, recip_overlap, metric, metricR):    
     returndict = inpdict
     for refquerykey, refqueryval in inpdict.items():
@@ -770,6 +773,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
                 return 2
     
 #function to check reciprocity based on whole ranges
+#!!! implement direction check for translated searches
 def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols, debugfile):
     returnlist = {} #all queries for the target go here
     querylist = inpdict.keys() #list of all queries
@@ -868,6 +872,7 @@ def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfi
     return returndict
 
 #function to run reference based reciprocity check
+#!!! implement direction for translated search
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
 def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, ref_hs1, cols, debugfile):
@@ -1217,18 +1222,27 @@ def dumper(inplist, extractiontype, trans_out2, ac2):
 def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, cols1, debugfile1):
     c1 = len(final_target_table1)
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
-    target_set = set()
+    if outM1 == "query":
+        target_set = {}
+        for qkey in final_table1.keys():
+            target_set[qkey] = set()
+    else:
+        target_set = {"main": set()}
     for seq in inputf1: #going over seqs in target file
         if seq.id in final_target_table1: #if the seq in target file
             seq_suffix_c = 1
             for qname in final_target_table1[seq.id]: #checking queries of the target
+                if outM1 == "query":
+                    check_name = qname
+                else:
+                    check_name = "main"
                 for sprcontig in range(len(final_table1[qname])): #going over supercontig indexes
                     num_contigs = len(final_table1[qname][sprcontig][1][3]) #number of contigs in supercontig
                     for t in range(num_contigs): #looking for target in the query table
                         if type(final_table1[qname][sprcontig][1][3][t]) is not int: #if not gap integer
                             tgt_index_name = final_table1[qname][sprcontig][1][3][t][0]
                             targetname = indexer_function(tgt_index_name, None)[0] #process target name
-                            if targetname == seq.id and tgt_index_name not in target_set: #found target in the query table and this particular version of target wasnt used
+                            if targetname == seq.id and tgt_index_name not in target_set[check_name]: #found target in the query table and this particular version of target wasnt used
                                 #get the sequence
                                 messagefunc(str(c1)+" EXTRACTING: contig "+targetname+", query "+qname, cols1, debugfile1)
                                 s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, ac1, metric, metricR)
@@ -1236,7 +1250,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                 if num_contigs == 1:
                                     #check if same target was used:
                                     use_suffix = False
-                                    for ts in target_set:
+                                    for ts in target_set[check_name]:
                                         if indexer_function(ts, None)[0] == targetname:
                                             use_suffix = True
                                             seq_suffix_c += 1
@@ -1250,12 +1264,12 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                             seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, contignum1, append_name1)
                                         else:
                                             seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
-                                    target_set.add(tgt_index_name)
+                                    target_set[check_name].add(tgt_index_name)
                                 else:
                                     #need to disable contig stiching when n is selected
                                     final_table1[qname][sprcontig][1][3][t][1] = s1
                                     messagefunc(str(c1)+" BUCKET: contig "+targetname+", query "+qname, cols1, debugfile1)
-                                    target_set.add(tgt_index_name)
+                                    target_set[check_name].add(tgt_index_name)
                                     #check the bucket
                                     dump_bucket = True
                                     for elem1 in final_table1[qname][sprcontig][1][3]:
