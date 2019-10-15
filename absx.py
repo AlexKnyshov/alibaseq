@@ -1079,9 +1079,9 @@ def bltableout(output, bltableout_file, table_type):
 #function to compute overlap between two ranges supplied as lists with start and end
 #returns overlap value
 def getOverlap(a, b):
-    a0=min(a-1) #start one pos less to detect 1 position overlap
+    a0=min(a)-1 #start one pos less to detect 1 position overlap
     a1=max(a)
-    b0=min(b-1) #start one pos less to detect 1 position overlap
+    b0=min(b)-1 #start one pos less to detect 1 position overlap
     b1=max(b)
     return max(0, min(a1, b1) - max(a0, b0))
 
