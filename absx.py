@@ -15,7 +15,7 @@ required = parser.add_argument_group('required arguments')
 optional = parser.add_argument_group('optional arguments')
 
 required.add_argument('-b', metavar='table', help='alignment table file',dest="blastfilearg",required=True)
-required.add_argument('-f', choices=['S','M'], help='file / folder mode',dest="filefolder", required=True)
+required.add_argument('-f', choices=['S','M','SM'], help='file / folder mode',dest="filefolder", required=True)
 required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n (whole contig), s (only best hit region), a (extract all hit regions and join them), b (extract region between two outmost hit regions)',dest="extractiontype",required=True)
 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
@@ -38,8 +38,6 @@ optional.add_argument('-R', metavar='file', help='target locus to reference cont
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
-#add possibility of single blast file and multiple fasta files
-#tied to that is extension in the query name (*.fas)
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -169,7 +167,7 @@ def readblastfilefunc(b, evalue1, as_target, ac3, recstats, cols, debugfile):
     for row in reader:
         if evalue1: 
             if float(row[10]) <= evalue1:
-                qname = row[0].split("/")[-1]
+                qname = row[0].split("/")[-1] #also allow *.fas
                 tname = row[1]
                 if recstats:
                     init_queries.add(qname)
@@ -1081,9 +1079,9 @@ def bltableout(output, bltableout_file, table_type):
 #function to compute overlap between two ranges supplied as lists with start and end
 #returns overlap value
 def getOverlap(a, b):
-    a0=min(a)
+    a0=min(a-1) #start one pos less to detect 1 position overlap
     a1=max(a)
-    b0=min(b)
+    b0=min(b-1) #start one pos less to detect 1 position overlap
     b1=max(b)
     return max(0, min(a1, b1) - max(a0, b0))
 
@@ -1135,8 +1133,12 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, met
     if extractiontype == "a":
         for i in hits:
             if type(i) is not int:
-                start = i[0]-1
-                end = i[1]
+                if ac2 == "tdna-aa":
+                    start = (i[0]+2)/3-1
+                    end = i[1]/3
+                else:
+                    start = i[0]-1
+                    end = i[1]
                 if direct:
                     tempseq = seq.seq[start:end]
                 else:
@@ -1155,8 +1157,12 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, met
                 else:
                     finalseq += Seq(tempseq2)
     elif extractiontype == "b":
-        start = ranges[0]-1
-        end = ranges[1]
+        if ac2 == "tdna-aa":
+            start = (ranges[0]+2)/3-1
+            end = ranges[1]/3
+        else:
+            start = ranges[0]-1
+            end = ranges[1]
         if start - fls < 0:
             start = 0
         else:
@@ -1178,8 +1184,12 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, met
                     comp1 = compare_scores(best_hit[0:2], best_hit[4:7], i[0:2], i[4:7], metric, metricR)
                     if comp1 == 1:
                         best_hit = i
-        start = best_hit[0]-1
-        end = best_hit[1]
+        if ac2 == "tdna-aa":
+            start = (best_hit[0]+2)/3-1
+            end = best_hit[1]/3
+        else:
+            start = best_hit[0]-1
+            end = best_hit[1]
         if start - fls < 0:
             start = 0
         else:
@@ -1346,13 +1356,13 @@ if filefolder == "M":
     else:
         blastlist = glob.glob(blastfilearg+"/*.hmmer")
     if not dry_run:
-        translist = glob.glob(targetf+"/*.fasta")
+        targetlist = glob.glob(targetf+"/*.fasta")
     if rec_search != None:
         rec_list = glob.glob(rec_search+"/*.blast")
-elif filefolder == "S":
+elif filefolder == "S" or "SM":
     blastlist = [blastfilearg]
     if not dry_run:
-        translist = [targetf]
+        targetlist = [targetf]
     if rec_search != None:
         rec_list = [rec_search]
 
@@ -1361,7 +1371,7 @@ if dry_run:
     messagefunc("dry run, no target files", cols, debugfile_generic, False)
 else:
     messagefunc("list of target fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
-    for l in translist:
+    for l in targetlist:
         messagefunc(l, cols, debugfile_generic)
     #make modified dir
     messagefunc("make modified dir...", cols, debugfile_generic, False)
@@ -1393,7 +1403,7 @@ for b in blastlist:
     init_targets = set()
     survived_queries = set()
     survived_targets = set()
-    messagefunc("target "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
+    messagefunc("target table "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
     debugfile = open(b.split("/")[-1]+"_absx.log", "w")
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
@@ -1443,28 +1453,33 @@ for b in blastlist:
     if dry_run:
         messagefunc("dry run, search through target file skipped", cols, debugfile_generic, False)
     else:
-        messagefunc("scanning the target fasta file...", cols, debugfile_generic, False)
-        messagefunc("--------scanning the target---------", cols, debugfile)
+        messagefunc("scanning the target fasta file(s)...", cols, debugfile_generic, False)
         
-        #get the transcriptome filename, matching blast filename
-        if filefolder == "M":
-            seqname = b[:-6].split("/")[-1]
-            target_db_match = [target_db_m1 for target_db_m1 in translist if seqname in target_db_m1]
-            if len(target_db_match) == 1:
-                inputf = SeqIO.parse(target_db_match[0], "fasta")
+        if filefolder == "SM":
+            for seqname in targetlist:
+                inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
-            elif len(target_db_match) == 0:
-                msg = "error, the target fasta file "+seqname+" is not found"
-                messagefunc(msg, cols, debugfile, False)
-            else:
-                msg = "error, several matches to "+seqname+" are found in the folder"
-                messagefunc(msg, cols, debugfile, False)
+                messagefunc("--------scanning the target---------", cols, debugfile)
+                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
         else:
-            seqname = translist[0]
-            inputf = SeqIO.parse(seqname, "fasta")
-            target_db_name = seqname.split("/")[-1]
-        
-        process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
+            if filefolder == "M":
+                seqname = b[:-6].split("/")[-1]
+                target_db_match = [target_db_m1 for target_db_m1 in targetlist if seqname in target_db_m1]
+                if len(target_db_match) == 1:
+                    inputf = SeqIO.parse(target_db_match[0], "fasta")
+                    target_db_name = seqname.split("/")[-1]
+                elif len(target_db_match) == 0:
+                    msg = "error, the target fasta file "+seqname+" is not found"
+                    messagefunc(msg, cols, debugfile, False)
+                else:
+                    msg = "error, several matches to "+seqname+" are found in the folder"
+                    messagefunc(msg, cols, debugfile, False)
+            else:
+                seqname = targetlist[0]
+                inputf = SeqIO.parse(seqname, "fasta")
+                target_db_name = seqname.split("/")[-1]
+            messagefunc("--------scanning the target---------", cols, debugfile)
+            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
 
     debugfile.close()
 
