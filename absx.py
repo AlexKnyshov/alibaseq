@@ -61,6 +61,7 @@ else:
         ac = "dna-dna"
         extractiontype = vars(args)["extractiontype"]
     else:
+        ac = vars(args)["ac"]
         extractiontype = vars(args)["extractiontype"]
 
     if vars(args)["trans_out"]:
@@ -112,7 +113,6 @@ else:
     recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
-    ac = vars(args)["ac"]
     metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
     ref_hs = vars(args)["ref_hs"]
@@ -335,16 +335,22 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         messagefunc(dash, cols, debugfile)
         messagefunc("target processor on target "+targetkey, cols, debugfile)
         #run local actual reciprocal check (check each hit of target only matches one query)
-        if local_rec == "actual" and len(targetval) > 1:
-            messagefunc("running actual (per hit) reciprocity check", cols, debugfile)
-            targetval = actual_reciprocator(targetval,recip_overlap, metric, metricR)
+        if local_rec == "actual":
+            if len(targetval) > 1:
+                messagefunc("running actual (per hit) reciprocity check", cols, debugfile)
+                targetval = actual_reciprocator(targetval,recip_overlap, metric, metricR)
+            else:
+                messagefunc("only one hit for this target, no reciprocity check", cols, debugfile)
         #run hit overlapper and sticher 
         messagefunc("running hit processor", cols, debugfile)
         tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
         #run local range reciprocal check
         if local_rec == "range":
-            messagefunc("running range reciprocity check", cols, debugfile)
-            tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
+            if len(tgt_proc_out) > 1:
+                messagefunc("running range reciprocity check", cols, debugfile)
+                tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
+            else:
+                messagefunc("only one query for this target, no reciprocity check", cols, debugfile)
         outdict[targetkey] = tgt_proc_out
     return outdict
 
@@ -775,29 +781,37 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
 def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols, debugfile):
     returnlist = {} #all queries for the target go here
     querylist = inpdict.keys() #list of all queries
+    badkeys = set()
     for querykey, queryval in inpdict.items(): #queries for a given target
-        cond = True
-        ref_query_range = inpdict[querykey][2]
-        ref_query_scores = inpdict[querykey][1]
-        for key in querylist: #running loop over other queries
-            if key != querykey: #all other queries
-                current_query_range = inpdict[key][2]
-                current_query_scores = inpdict[key][1]
-                if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
-                    comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
-                    if comp1 == 1:
-                        cond = False
-                        messagefunc(targetkey1+" has better eval hit to "+key+" than to "+querykey, cols, debugfile)
-                        print >> debugfile, ref_query_range, ref_query_scores, current_query_range, current_query_scores
-                        break
-                    elif comp1 == 2:
-                        wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
-                        warninglist.append(wrn)
-                        messagefunc(wrn, cols, debugfile)
-                        messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
-                        messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
-        if cond: #only return good items
-            returnlist[querykey] = queryval
+        if querykey not in badkeys:
+            cond = True
+            ref_query_range = inpdict[querykey][2]
+            ref_query_scores = inpdict[querykey][1]
+            for key in querylist: #running loop over other queries
+                if key not in badkeys and key != querykey: #all other queries
+                    current_query_range = inpdict[key][2]
+                    current_query_scores = inpdict[key][1]
+                    if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
+                        # print >> debugfile, "comparing", key, current_query_range, current_query_scores, "with ref", querykey, ref_query_range, ref_query_scores
+                        comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
+                        if comp1 == 1:
+                            cond = False
+                            # print >> debugfile, ref_query_range, ref_query_scores, current_query_range, current_query_scores
+                            badkeys.add(querykey)
+                            break
+                        elif comp1 == 0:
+                            badkeys.add(key)
+                        elif comp1 == 2:
+                            wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
+                            warninglist.append(wrn)
+                            messagefunc(wrn, cols, debugfile)
+                            messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
+                            messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
+            if cond: #only return good items
+                returnlist[querykey] = queryval
+    messagefunc(str(len(returnlist))+" queries survived, "+str(len(badkeys))+" queries were filtered out by range reciprocity check", cols, debugfile)
+    if len(badkeys) > 0:
+        print >> debugfile, badkeys
     return returnlist
     
 #second main function
