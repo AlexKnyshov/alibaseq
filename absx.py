@@ -37,7 +37,9 @@ optional.add_argument('-r', metavar='file/folder', help='reciprocal search outpu
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
+optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
+
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -63,6 +65,13 @@ else:
     else:
         ac = vars(args)["ac"]
         extractiontype = vars(args)["extractiontype"]
+    if vars(args)["no_hs"] or extractiontype == "n":
+        print "without hit sticher, contig stiching is disabled, option --is ignored"
+        run_hs = False
+        interstich = False
+    else:
+        run_hs = True
+        interstich = vars(args)["interstich"]
 
     if vars(args)["trans_out"]:
         if extractiontype == "s" or extractiontype == "a":
@@ -106,7 +115,6 @@ else:
             sys.exit()
         else:
             target_ref_file = vars(args)["target_ref_file"]
-    interstich = vars(args)["interstich"]
 
     hit_ovlp = vars(args)["hit_ovlp"]
     ctg_ovlp = vars(args)["ctg_ovlp"]
@@ -255,7 +263,7 @@ def rowfunc(row, aligntype):
 
 
 #function for parsing hmmer output tables
-def readhmmerfilefunc(b, evalue1, bt1, cols, debugfile):
+def readhmmerfilefunc(b, evalue1, bt1, ac1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     targetdict = {}
     hmmfile = open(b, "rU")
@@ -289,7 +297,13 @@ def readhmmerfilefunc(b, evalue1, bt1, cols, debugfile):
             line = row.strip().split()
             if float(line[eval1]) <= evalue1:
                 qname = line[qname1]+".fas"
-                tname = line[tname1]
+                if ac1 == "aa-tdna":
+                    tname = "_".join(line[tname1].split("_")[:-1])
+                    strand = line[tname1].split("_")[-1][0]
+                    frame = int(line[tname1].split("_")[-1][1])
+                    ctg_length = int(line[tname1].split("_")[-1][3:])
+                else:
+                    tname = line[tname1]
                 init_queries.add(qname)
                 init_targets.add(tname)
                 if bt1 != "hmmer18":
@@ -313,7 +327,22 @@ def readhmmerfilefunc(b, evalue1, bt1, cols, debugfile):
                     query_r = 1
                     query_b = True
                 #no identity is reported, so it is set to 0.0 and does not interfere with scoring system
-                outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
+                if ac1 == "aa-tdna":
+                    query_f = int(line[query1])*3-2
+                    query_r = int(line[query2])*3
+                    if strand == "f":
+                        target_b = True
+                    else:
+                        target_b = False
+                    if target_b:
+                        target_f = int(line[target1])*3-2+frame
+                        target_r = int(line[target2])*3+frame
+                    else:
+                        target_f = ctg_length-int(line[target1])*3+frame
+                        target_r = ctg_length-int(line[target2])*3-2+frame
+                    outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
+                else:
+                    outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
                 #populate target table
                 if tname in targetdict:
                     if qname in targetdict[tname]:
@@ -327,7 +356,7 @@ def readhmmerfilefunc(b, evalue1, bt1, cols, debugfile):
     return targetdict
 
 #first main function
-def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, cols, debugfile):
+def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, cols, debugfile):
     messagefunc(dashb, cols, debugfile)
     messagefunc("running target processor...", cols, debugfile)
     outdict = {}
@@ -343,7 +372,10 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
                 messagefunc("only one hit for this target, no reciprocity check", cols, debugfile)
         #run hit overlapper and sticher 
         messagefunc("running hit processor", cols, debugfile)
-        tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+        if run_hs1:
+            tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+        else:
+            tgt_proc_out = reformat_hits(targetval, metric, metricR, cols, debugfile)
         #run local range reciprocal check
         if local_rec == "range":
             if len(tgt_proc_out) > 1:
@@ -358,7 +390,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
 #function to split hits by strand (same vs opposite)
 #input is dictionary {linecounter: [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]}
 #return list of dictionaries
-def strand_selector(inpdict, metric, metricR):
+def strand_selector(inpdict):
     #split into things per direction
     clusterF = {}
     clusterR = {}
@@ -426,12 +458,48 @@ def sticher_helper(refhitkey1, hitkey1, hitdict1, bucketdict1, nbuck1, opt1, col
         if refhitkey1 in bucketdict1:
             del bucketdict1[refhitkey1]
     return hitdict1, bucketdict1, nbuck1
-                                                    
+
+def reformat_hits(inpdict, metric, metricR, cols, debugfile):
+    returnlist = {} #all queries for the target go here
+    for querykey, queryval in inpdict.items():
+        clusters = strand_selector(queryval)
+        directions = [True, False]
+        best_index1 = None
+        best_dir1 = None
+        best_range1 = None
+        best_score1 = None
+        best_data1 = None
+        for cluster_index in range(2):
+            direct = directions[cluster_index]
+            hits1 = clusters[cluster_index].values()
+            for hit_index in range(len(hits1)):
+                if best_index1 == None:
+                    best_index1 = hit_index
+                    best_dir1 = [direct]
+                    best_range1 = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                    best_score1 = hits1[hit_index][6:9]
+                    best_data1 = best_range1+best_score1
+                else:
+                    hit_scores = hits1[hit_index][6:9]
+                    hit_ranges = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                    hit_data = hit_ranges+hit_scores
+                    comp1 = compare_scores(best_range1, best_score1, hit_ranges, hit_scores, metric, metricR)
+                    if comp1 == 1:
+                        best_index1 = hit_index
+                        best_dir1 = [direct]
+                        best_range1 = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                        best_score1 = hits1[hit_index][6:9]
+                        best_data1 = best_range1+best_score1
+        returnlist[indexer_function(querykey,str(0))] = [best_dir1, best_score1, best_range1, best_data1]
+        print >> debugfile, querykey, ", selected best hit:", returnlist[indexer_function(querykey,str(0))]
+    return returnlist
+
+
 #function to process hit of the same target (remove redundant, order and stich hits, make subcontigs)
 def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
-        clusters = strand_selector(queryval, metric, metricR)
+        clusters = strand_selector(queryval)
         directions = [True, False]
         stiched_subcontigs = [] #stiched subcontigs for a query go here
         for cluster_index in range(2):
@@ -1425,7 +1493,7 @@ for b in blastlist:
     if bt == "blast":
         output = readblastfilefunc(b, evalue, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, evalue, bt, cols, debugfile)
+        output = readhmmerfilefunc(b, evalue, bt, ac, cols, debugfile)
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
@@ -1447,7 +1515,7 @@ for b in blastlist:
     final_target_table = {}
     
     #run target processor
-    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, cols, debugfile)
+    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, cols, debugfile)
     
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, cols, debugfile)
