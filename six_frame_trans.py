@@ -18,7 +18,7 @@ with open(infname) as infhandle:
 		for seq in seqs:
 			rem = len(seq.seq) % 3
 			if rem != 0:
-				seq.seq = seq.seq+Seq("N"*rem)
+				seq.seq = seq.seq+Seq("N"*(3-rem))
 			for frame in range(3):
 				print >> outhandle, ">"+seq.id+"_f"+str(frame+1)+"l"+str(len(seq.seq))
 				print >> outhandle, (seq.seq[frame:]+Seq("N"*frame)).translate()
