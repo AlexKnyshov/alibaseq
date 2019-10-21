@@ -17,7 +17,6 @@ with open(infname) as infhandle:
 		seqs = SeqIO.parse(infhandle, "fasta")
 		for seq in seqs:
 			rem = len(seq.seq) % 3
-			print rem
 			if rem != 0:
 				seq.seq = seq.seq+Seq("N"*rem)
 			for frame in range(3):
