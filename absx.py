@@ -23,7 +23,7 @@ optional.add_argument('-q', metavar='query', help='query file(s) to which extrac
 optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="absx_out")
 optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
-optional.add_argument('-i', metavar='N', help='identity cutoff',dest="ident", type=float, default=0.0)
+optional.add_argument('-i', metavar='N', help='identity cutoff',dest="identity", type=float, default=0.0)
 optional.add_argument('-B', metavar='N', help='bitscore cutoff',dest="bitscore", type=float, default=0.0)
 optional.add_argument('-c', metavar='N', help='number of contigs to extract, if set to 0, then extract all contigs',dest="contignum", type=int, default=0)
 optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
