@@ -23,6 +23,8 @@ optional.add_argument('-q', metavar='query', help='query file(s) to which extrac
 optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="absx_out")
 optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
+optional.add_argument('-i', metavar='N', help='identity cutoff',dest="ident", type=float, default=0.0)
+optional.add_argument('-B', metavar='N', help='bitscore cutoff',dest="bitscore", type=float, default=0.0)
 optional.add_argument('-c', metavar='N', help='number of contigs to extract, if set to 0, then extract all contigs',dest="contignum", type=int, default=0)
 optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
 optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
@@ -104,6 +106,8 @@ else:
             noq = True
     
     evalue = vars(args)["evalue"]
+    bitscore = vars(args)["bitscore"]
+    identity = vars(args)["identity"]
     contignum = vars(args)["contignum"]
     local_rec = vars(args)["local_rec"]
     if vars(args)["rec_search"] == None:
@@ -166,7 +170,7 @@ def copyfunc(dir1, cols, debugfile):
     messagefunc("copied "+str(copyfunc_c)+" files", cols, debugfile, False)
 
 #function for parsing a blast output file
-def readblastfilefunc(b, evalue1, as_target, ac3, recstats, cols, debugfile):
+def readblastfilefunc(b, evalue1, bitscore1, identity1, as_target, ac3, recstats, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     returndict = {}
     blastfile = open(b, "rU")
@@ -174,7 +178,7 @@ def readblastfilefunc(b, evalue1, as_target, ac3, recstats, cols, debugfile):
     linecounter = 0
     for row in reader:
         if evalue1: 
-            if float(row[10]) <= evalue1:
+            if float(row[10]) <= evalue1 and float(row[11]) >= bitscore1 and float(row[2]) >= identity1:
                 qname = row[0].split("/")[-1] #also allow *.fas
                 tname = row[1]
                 if recstats:
@@ -263,7 +267,7 @@ def rowfunc(row, aligntype):
 
 
 #function for parsing hmmer output tables
-def readhmmerfilefunc(b, evalue1, bt1, ac1, cols, debugfile):
+def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     targetdict = {}
     hmmfile = open(b, "rU")
@@ -295,7 +299,7 @@ def readhmmerfilefunc(b, evalue1, bt1, ac1, cols, debugfile):
     for row in hmmfile:
         if row[0] != "#":
             line = row.strip().split()
-            if float(line[eval1]) <= evalue1:
+            if float(line[eval1]) <= evalue1 and float(line[bit1]) >= bitscore1:
                 qname = line[qname1]+".fas"
                 if ac1 == "aa-tdna":
                     tname = "_".join(line[tname1].split("_")[:-1])
@@ -1465,7 +1469,7 @@ else:
 
 #reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, evalue, False, ac, False, cols, debugfile_generic)
+    target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, ac, False, cols, debugfile_generic)
     target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, ac, cols, debugfile_generic)
 else:
     target_ref = None
@@ -1491,17 +1495,17 @@ for b in blastlist:
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
-        output = readblastfilefunc(b, evalue, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
+        output = readblastfilefunc(b, evalue, bitscore, identity, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, evalue, bt, ac, cols, debugfile)
+        output = readhmmerfilefunc(b, evalue, bitscore, bt, ac, cols, debugfile)
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
-            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, False, ac, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, None, None, False, ac, False, cols, debugfile)
             if ref_hs:
                 rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         elif len(rec_list) == 1:
-            rec_out = readblastfilefunc(rec_list[0], None, False, ac, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_list[0], None, None, None, False, ac, False, cols, debugfile)
             if ref_hs:
                 rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
         else:
