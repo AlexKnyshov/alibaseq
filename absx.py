@@ -44,7 +44,11 @@ optional.add_argument('--rescale-metric', dest='metricR', action='store_true', h
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
-
+#add possibility of single blast file and multiple fasta files
+#tied to that is extension in the query name (*.fas)
+#modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
+#hit sticher still runs in -n and -s. check how good is that. perhaps add customization
+#bed parser for reference
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -124,7 +128,7 @@ else:
             target_ref_file = vars(args)["target_ref_file"]
         acr = vars(args)["acr"]
         acR = vars(args)["acR"]
-        rmrecnf = vars(args)["rmrecnf"]        
+    rmrecnf = vars(args)["rmrecnf"]        
 
     hit_ovlp = vars(args)["hit_ovlp"]
     ctg_ovlp = vars(args)["ctg_ovlp"]
