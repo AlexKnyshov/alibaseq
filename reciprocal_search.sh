@@ -21,13 +21,19 @@ else
 	else 
 		echo "no modules loaded"
 	fi
+	if [[ $4 == dc-megablast ]]
+	then
+		prog="blastn -task dc-megablast"
+	else
+		prog=$4
+	fi
 	if [ -z "$8" ]
 	then
 	    echo "single sample option selected"
 		echo "extract contigs"
 		cut -f2 $1 | sort | uniq > contigs_to_extract.txt
 		python $7 contigs_to_extract.txt $2
-		$4 -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
+		$prog -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
 		rm contigs_to_extract.txt extracted_contigs.fas
 	else
 	  	echo "multiple sample option selected, number of samples: $(cat $8 | wc -l)"
@@ -39,7 +45,7 @@ else
 	  		echo "get contigs"
 	  		python $7 contigs_to_extract.txt $2/$sample
 	  		echo "run blast"
-	  		$4 -db $3 -query extracted_contigs.fas -out $1/$sample".blast_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
+	  		$prog -db $3 -query extracted_contigs.fas -out $1/$sample".blast_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
 	  		rm contigs_to_extract.txt extracted_contigs.fas
 		done < $8
 	fi
