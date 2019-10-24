@@ -35,13 +35,19 @@ optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
 optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15'], help='alignment table type',dest="bt", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
+optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reciprocal alignment coordinate type',dest="acr", default="dna-dna")
+optional.add_argument('--acR', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reference alignment coordinate type',dest="acR", default="dna-dna")
 optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
 optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
-
+#add possibility of single blast file and multiple fasta files
+#tied to that is extension in the query name (*.fas)
+#modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
+#hit sticher still runs in -n and -s. check how good is that. perhaps add customization
+#bed parser for reference
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -119,6 +125,8 @@ else:
             sys.exit()
         else:
             target_ref_file = vars(args)["target_ref_file"]
+        acr = vars(args)["acr"]
+        acR = vars(args)["acR"]
 
     hit_ovlp = vars(args)["hit_ovlp"]
     ctg_ovlp = vars(args)["ctg_ovlp"]
@@ -1469,8 +1477,8 @@ else:
 
 #reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, ac, False, cols, debugfile_generic)
-    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, ac, cols, debugfile_generic)
+    target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, acR, False, cols, debugfile_generic)
+    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, cols, debugfile_generic)
 else:
     target_ref = None
 
@@ -1501,13 +1509,13 @@ for b in blastlist:
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
-            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, None, None, False, ac, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, cols, debugfile)
         elif len(rec_list) == 1:
-            rec_out = readblastfilefunc(rec_list[0], None, None, None, False, ac, False, cols, debugfile)
+            rec_out = readblastfilefunc(rec_list[0], None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, ac, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
