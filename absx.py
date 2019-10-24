@@ -43,11 +43,8 @@ optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
-#add possibility of single blast file and multiple fasta files
-#tied to that is extension in the query name (*.fas)
-#modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
-#hit sticher still runs in -n and -s. check how good is that. perhaps add customization
-#bed parser for reference
+optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
+
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -127,6 +124,7 @@ else:
             target_ref_file = vars(args)["target_ref_file"]
         acr = vars(args)["acr"]
         acR = vars(args)["acR"]
+        rmrecnf = vars(args)["rmrecnf"]        
 
     hit_ovlp = vars(args)["hit_ovlp"]
     ctg_ovlp = vars(args)["ctg_ovlp"]
@@ -895,12 +893,12 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
     return returnlist
     
 #second main function
-def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
+def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, rmrecnf, cols, debugfile):
     returndict = {}
     # 1 reformat target table as query table
     # 2 run reference reciprocation: for each query each target must match back to query transcript from reference
     messagefunc(dashb, cols, debugfile)
-    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile) #do steps 1 and 2
+    query_dict = reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, rmrecnf, cols, debugfile) #do steps 1 and 2
     # 3 for each query rank targets by scores
     # 4 run sticher, i.e. fill in size of query with contigs in best order, set aside, continue
     messagefunc(dashb, cols, debugfile)
@@ -932,7 +930,7 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
 #function to reformat target based dict into query based, running reference reciprocity check along the way
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, cols, debugfile):
+def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, ref_hs, rmrecnf, cols, debugfile):
     messagefunc("reformatting dictionaries...", cols, debugfile)
     returnlist = {}
     for targetkey, targetval in inpdict.items():
@@ -943,7 +941,7 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
             targetkeynew = indexer_function(targetkey, queryindex)
             # reciprocal search section
             if rec_dict != None:
-                if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, ref_hs, cols, debugfile):
+                if reference_reciprocator(querykeynew, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey, ref_hs, rmrecnf, cols, debugfile):
                     if querykeynew in returnlist:
                         returnlist[querykeynew][targetkeynew] = queryval
                     else:
@@ -967,7 +965,7 @@ def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfi
 #!!! implement direction for translated search
 # returnlist[querykey+"_"+str(subcont_index)] = stiched_subcontigs[subcont_index]
 # stiched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
-def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, ref_hs1, cols, debugfile):
+def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metricR, hit_overlap, ac1, recip_overlap, targetkey1, ref_hs1, rmrecnf1, cols, debugfile):
     messagefunc("running reference based reciprocity check...", cols, debugfile)
     returnlist = {}
     cond = True
@@ -1065,11 +1063,15 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             else:
                 msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                 messagefunc(msg, cols, debugfile)
+                if rmrecnf:
+                    cond = False
                 warninglist.append(msg)
     else:
         msg = "no matches to query "+query+" in ref [should not happen, possibly queries for forward and reciprocal search differ]"
         messagefunc(msg, cols, debugfile)
         warninglist.append(msg)
+        if rmrecnf:
+            cond = False
     return cond
 
 #function to rank targets based on their scores
@@ -1530,7 +1532,7 @@ for b in blastlist:
     target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, cols, debugfile)
     
     #run query processor
-    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, cols, debugfile)
+    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
 
     final_target_table = reformat_table(final_table, cols, debugfile)
 
