@@ -783,7 +783,7 @@ def amalgamate_scores(item1, item2, metricC):
     neweval = item1[0] * item2[0] #probability product
     #test correction
     (sign, digits, exponent) = Decimal(neweval).as_tuple()
-    neweval = int(round((exponent+len(digits))*metricC))
+    neweval = 1*(10**int(round((exponent+len(digits))*metricC)))
     newbit = (item1[1] + item2[1])*metricC #sum of bits
     newident = (item1[2] + item2[2]) / 2 #average of identities
     return [neweval, newbit, newident]
