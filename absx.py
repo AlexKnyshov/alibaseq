@@ -1,6 +1,7 @@
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from decimal import Decimal
 import glob
 import os
 import shutil
@@ -39,15 +40,15 @@ optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa'
 optional.add_argument('--acR', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reference alignment coordinate type',dest="acR", default="dna-dna")
 optional.add_argument('-r', metavar='file/folder', help='reciprocal search output file or folder',dest="rec_search")
 optional.add_argument('-R', metavar='file', help='target locus to reference contig correspondence file',dest="target_ref_file")
-optional.add_argument('-m', choices=['e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e-b-i")
+optional.add_argument('-m', choices=['e/b-i','e-b-i','b-e-i','i-b-e','i-e-b','b-i-e','e-i-b'], help='order of metrics to use to select best matches (e - evalue, b - bitscore, i - identity)',dest="metric", default="e/b-i")
 optional.add_argument('--rescale-metric', dest='metricR', action='store_true', help='divide metric value by length of hit region', default=False)
+optional.add_argument('--metric-merge-corr', metavar='N', help='reduce combined metric by this value',dest="metricC", type=float, default=0.75)
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
-#hit sticher still runs in -n and -s. check how good is that. perhaps add customization
 #bed parser for reference
 
 if len(sys.argv) == 1:
@@ -135,8 +136,12 @@ else:
     recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
-    metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
+    if vars(args)["metric"] == "e/b-i":
+        metric
+    else:
+        metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
+    metricC = vars(args)["metricC"]
     ref_hs = vars(args)["ref_hs"]
 
 
@@ -774,9 +779,12 @@ def extend_hit(item1, item2, tovlp):
     return outlist
 
 #function to combine scores (only used for contig combination for now)
-def amalgamate_scores(item1, item2):
+def amalgamate_scores(item1, item2, metricC):
     neweval = item1[0] * item2[0] #probability product
-    newbit = item1[1] + item2[1] #sum of bits
+    #test correction
+    (sign, digits, exponent) = Decimal(neweval).as_tuple()
+    neweval = int(round((exponent+len(digits))*metricC))
+    newbit = (item1[1] + item2[1])*metricC #sum of bits
     newident = (item1[2] + item2[2]) / 2 #average of identities
     return [neweval, newbit, newident]
     
@@ -784,7 +792,7 @@ def amalgamate_scores(item1, item2):
 #return 0 if first is better
 #return 1 if second is better
 #return 2 if they are equal
-#metric [0,1,2] or [2,1,0]
+#metric [0,1,2] or [2,1,0] or "e/b-i"
 def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, metricR):
     len1 = float(max(item1ranges[0], item1ranges[1]) - min(item1ranges[0], item1ranges[1]))
     len2 = float(max(item2ranges[0], item2ranges[1]) - min(item2ranges[0], item2ranges[1]))
@@ -804,59 +812,72 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
         ident2 =  item2scores[2]
     
     metricL = [[eval1,eval2],[bit1,bit2],[ident1,ident2]]
-    #first (0)
-    #if 0 higher than 1
-    if metricL[metric[0]][0] > metricL[metric[0]][1]:
-        #if eval, return 1 as best
-        if metric[0] == 0:
-            return 1
-        #else return 0 as best
-        else:
+    if metric == "e/b-i":
+        if metricL[0][0] < metricL[0][1] and metricL[1][0] > metricL[1][1]:
             return 0
-    elif metricL[metric[0]][0] < metricL[metric[0]][1]:
-        #if eval, return 0 as best
-        if metric[0] == 0:
-            return 0
-        #else return 1 as best
-        else:
+        elif metricL[0][0] > metricL[0][1] and metricL[1][0] < metricL[1][1]:
             return 1
-    #first order equal, try second order
+        else:
+            if metricL[2][0] > metricL[2][1]:
+                return 0
+            elif metricL[2][0] < metricL[2][1]:
+                return 1
+            else:
+                return 2
     else:
+        #first (0)
         #if 0 higher than 1
-        if metricL[metric[1]][0] > metricL[metric[1]][1]:
+        if metricL[metric[0]][0] > metricL[metric[0]][1]:
             #if eval, return 1 as best
-            if metric[1] == 0:
+            if metric[0] == 0:
                 return 1
             #else return 0 as best
             else:
                 return 0
-        elif metricL[metric[1]][0] < metricL[metric[1]][1]:
+        elif metricL[metric[0]][0] < metricL[metric[0]][1]:
             #if eval, return 0 as best
-            if metric[1] == 0:
+            if metric[0] == 0:
                 return 0
             #else return 1 as best
             else:
                 return 1
-        #second order equal, try third order
+        #first order equal, try second order
         else:
             #if 0 higher than 1
-            if metricL[metric[2]][0] > metricL[metric[2]][1]:
+            if metricL[metric[1]][0] > metricL[metric[1]][1]:
                 #if eval, return 1 as best
-                if metric[2] == 0:
+                if metric[1] == 0:
                     return 1
                 #else return 0 as best
                 else:
                     return 0
-            elif metricL[metric[2]][0] < metricL[metric[2]][1]:
+            elif metricL[metric[1]][0] < metricL[metric[1]][1]:
                 #if eval, return 0 as best
-                if metric[2] == 0:
+                if metric[1] == 0:
                     return 0
                 #else return 1 as best
                 else:
                     return 1
-            #third order is equal, return 2
+            #second order equal, try third order
             else:
-                return 2
+                #if 0 higher than 1
+                if metricL[metric[2]][0] > metricL[metric[2]][1]:
+                    #if eval, return 1 as best
+                    if metric[2] == 0:
+                        return 1
+                    #else return 0 as best
+                    else:
+                        return 0
+                elif metricL[metric[2]][0] < metricL[metric[2]][1]:
+                    #if eval, return 0 as best
+                    if metric[2] == 0:
+                        return 0
+                    #else return 1 as best
+                    else:
+                        return 1
+                #third order is equal, return 2
+                else:
+                    return 2
     
 #function to check reciprocity based on whole ranges
 #!!! implement direction check for translated searches
@@ -897,7 +918,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
     return returnlist
     
 #second main function
-def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, rmrecnf, cols, debugfile):
+def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, contignum, contig_overlap, interstich, hit_overlap, ac1, recip_overlap, ref_hs, rmrecnf, cols, debugfile):
     returndict = {}
     # 1 reformat target table as query table
     # 2 run reference reciprocation: for each query each target must match back to query transcript from reference
@@ -913,7 +934,7 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, contignum, c
             messagefunc("rank targets", cols, debugfile)
             targetlist = rank_targets(queryval, metric, metricR) # step 3
             messagefunc("running contig sticher...", cols, debugfile)
-            stiched_targets = contig_sticher(targetlist, metric, metricR, contig_overlap, interstich, cols, debugfile) # step 4
+            stiched_targets = contig_sticher(targetlist, metric, metricR, metricC, contig_overlap, interstich, cols, debugfile) # step 4
         else:
             messagefunc("only one target, no ranking and stiching", cols, debugfile)
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
@@ -1103,7 +1124,7 @@ def rank_targets(inpdict, metric, metricR):
     # [target, [ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]]
 
 #function to check if contigs are overlapping and call functions to merge contigs, their scores, and rank supercontigs after operation is completed
-def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, debugfile):
+def contig_sticher(inplist, metric, metricR, metricC, contig_overlap, interstich, cols, debugfile):
     ctg_counter = 0
     returndict = {}
     returnlist = []
@@ -1128,7 +1149,7 @@ def contig_sticher(inplist, metric, metricR, contig_overlap, interstich, cols, d
                         if cond:
                             current_list.append(contig1)
                             removed_contigs.append(contig1)
-                            supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]])
+                            supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
                 else:
                     messagefunc("overlapping disabled", cols, debugfile)
                     current_list.append(contig1)
@@ -1536,7 +1557,7 @@ for b in blastlist:
     target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, cols, debugfile)
     
     #run query processor
-    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
+    final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, metricC, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
 
     final_target_table = reformat_table(final_table, cols, debugfile)
 
