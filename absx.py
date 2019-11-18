@@ -137,7 +137,7 @@ else:
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
     if vars(args)["metric"] == "e/b-i":
-        metric
+        metric = "e/b-i"
     else:
         metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
