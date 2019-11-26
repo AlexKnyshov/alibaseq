@@ -19,6 +19,12 @@ else
 	else 
 		echo "no modules loaded"
 	fi
+	if [[ $4 == dc-megablast ]]
+	then
+		prog="blastn -task dc-megablast"
+	else
+		prog=$4
+	fi
 	echo "erasing the content of the blast output file..."
 	rm *.blast
 	if [ -z "$7" ]
@@ -55,7 +61,7 @@ else
 		 	echo -ne "                                                                          \r"
 		 	echo -ne $zo"% blast $name against $2...\r"
 		 	touch output.blast
-		 	$4 -db $2 -query fasextr.blast -out output.blast -outfmt 6 -num_threads $5 -evalue $3
+		 	$prog -db $2 -query fasextr.blast -out output.blast -outfmt 6 -num_threads $5 -evalue $3
 		 	blname=$(echo $2 | rev | cut -d'/' -f-1 | rev )
 		 	#cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr | sort -u -k2,2 --merge | sort -k1,1 -k11,11g -k12,12nr >> $blname.blast
 		 	cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr >> $blname.blast
@@ -96,7 +102,7 @@ else
 		 		echo -ne $zo"% blast $name against $fdb...\r"
 		 		zo=$(( CT2*100 / TOTAL ))
 		 		touch output.blast
-		 		$4 -db $2/$fdb -query fasextr.blast -out output.blast -outfmt 6 -num_threads $5 -evalue $3
+		 		$prog -db $2/$fdb -query fasextr.blast -out output.blast -outfmt 6 -num_threads $5 -evalue $3
 		 		#cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr | sort -u -k2,2 --merge | sort -k1,1 -k11,11g -k12,12nr >> $fdb.blast
 		 		cat output.blast | sort -k1,1 -k2,2 -k11,11g -k12,12nr >> $fdb.blast
 		 	done < $7
