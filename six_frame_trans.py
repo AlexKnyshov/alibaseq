@@ -14,13 +14,14 @@ else:
 	sys.exit()
 
 def six_frame_translate(seq):
-	rem = len(seq.seq) % 3
+	lenseq = len(seq.seq)
+	rem = lenseq % 3
 	if rem != 0:
 		seq.seq = seq.seq+Seq("N"*(3-rem))
 	result = {}
 	for frame in range(3):
-		result[">"+seq.id+"_f"+str(frame+1)+"l"+str(len(seq.seq))] = (seq.seq[frame:]+Seq("N"*frame)).translate()
-		result[">"+seq.id+"_r"+str(frame+1)+"l"+str(len(seq.seq))] = (seq.seq.reverse_complement()[frame:]+Seq("N"*frame)).translate()
+		result[">"+seq.id+"_f"+str(frame+1)+"l"+str(lenseq)] = (seq.seq[frame:]+Seq("N"*frame)).translate()
+		result[">"+seq.id+"_r"+str(frame+1)+"l"+str(lenseq)] = (seq.seq.reverse_complement()[frame:]+Seq("N"*frame)).translate()
 	return result
 
 with open(infname) as infhandle:
