@@ -46,6 +46,7 @@ optional.add_argument('--metric-merge-corr', metavar='N', help='reduce combined 
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
+optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
@@ -143,6 +144,7 @@ else:
     metricR = vars(args)["metricR"]
     metricC = vars(args)["metricC"]
     ref_hs = vars(args)["ref_hs"]
+    max_gap = vars(args)["max_gap"]
 
 
 dashb = "#"*75
@@ -356,10 +358,19 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, cols, debugfile):
                     if target_b:
                         target_f = int(line[target1])*3-2+frame
                         target_r = int(line[target2])*3+frame
+                        #test this adjustment
+                        if target_r > ctg_length:
+                            target_r = ctg_length
                     else:
                         target_f = ctg_length-int(line[target1])*3+frame
+                        #test this adjustment
+                        if target_f < 0:
+                            target_f = 0
                         target_r = ctg_length-int(line[target2])*3-2+frame
                     outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
+                    # print >> debugfile, outrow
+                    # print >> debugfile, line
+                    # sys.exit()
                 else:
                     outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
                 #populate target table
@@ -375,7 +386,7 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, cols, debugfile):
     return targetdict
 
 #first main function
-def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, cols, debugfile):
+def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, cols, debugfile):
     messagefunc(dashb, cols, debugfile)
     messagefunc("running target processor...", cols, debugfile)
     outdict = {}
@@ -392,7 +403,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         #run hit overlapper and sticher 
         messagefunc("running hit processor", cols, debugfile)
         if run_hs1:
-            tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, cols, debugfile) #stiched subcontigs per query
+            tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, max_gap1, cols, debugfile) #stiched subcontigs per query
         else:
             tgt_proc_out = reformat_hits(targetval, metric, metricR, cols, debugfile)
         #run local range reciprocal check
@@ -515,7 +526,7 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
 
 
 #function to process hit of the same target (remove redundant, order and stich hits, make subcontigs)
-def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
+def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
         clusters = strand_selector(queryval)
@@ -618,24 +629,27 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
                             bhit = -1
                             bhitval = []
                             for htnm in tempbuck.keys():
-                                if bhit == -1:
-                                    bhit = htnm
-                                    bhitval = tempbuck[htnm]
-                                else:
-                                    comp1 = compare_scores(bhitval[0:2],bhitval[6:9], tempbuck[htnm][0:2],tempbuck[htnm][6:9], metric, metricR)
-                                    #if tempbuck[htnm] is better. otherwise keep best as is
-                                    if comp1 == 1:
+                                if len(sbctg) == 0 or synteny_check(sbctg, tempbuck[htnm], direct, max_gap2, cols, debugfile):
+                                    if bhit == -1:
                                         bhit = htnm
                                         bhitval = tempbuck[htnm]
-                                        #potentially need breaking and restarting the loop?
-                            sbctg.append(tempbuck[bhit]) #add best to subcontig
-                            del bucketdict[bhit] #remove the best from further assessments
-                            del hitdict[bhit] #same
+                                    else:
+                                        comp1 = compare_scores(bhitval[0:2],bhitval[6:9], tempbuck[htnm][0:2],tempbuck[htnm][6:9], metric, metricR)
+                                        #if tempbuck[htnm] is better. otherwise keep best as is
+                                        if comp1 == 1:
+                                            bhit = htnm
+                                            bhitval = tempbuck[htnm]
+                                            #potentially need breaking and restarting the loop?
+                            if bhit != -1:
+                                sbctg.append(tempbuck[bhit]) #add best to subcontig
+                                del bucketdict[bhit] #remove the best from further assessments
+                                del hitdict[bhit] #same
                         elif len(tempbuck) == 1:
                             bhit = tempbuck.keys()[0]
-                            sbctg.append(tempbuck[bhit]) #add best to subcontig
-                            del bucketdict[bhit] #remove the best from further assessments
-                            del hitdict[bhit] #same
+                            if len(sbctg) == 0 or synteny_check(sbctg, tempbuck[bhit], direct, max_gap2, cols, debugfile):
+                                sbctg.append(tempbuck[bhit]) #add best to subcontig
+                                del bucketdict[bhit] #remove the best from further assessments
+                                del hitdict[bhit] #same
                         #else do nothing
                     if len(sbctg) > 0:
                         subcontigs.append(sbctg)
@@ -656,6 +670,46 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
         for subcont_index in range(len(stiched_subcontigs)):
             returnlist[indexer_function(querykey,str(subcont_index))] = stiched_subcontigs[subcont_index]
     return returnlist
+
+#checks syntheny and gap between hits
+def synteny_check(inplist, item1, direct1, max_gap3, cols1, debugfile1):
+    cond = True
+    item1medT = median([item1[0],item1[1]])
+    item1medQ = median([item1[3],item1[4]])
+    min_deltaT = 0
+    min_deltaQ = 0
+    for item2 in inplist:
+        item2medT = median([item2[0],item2[1]])
+        item2medQ = median([item2[3],item2[4]])
+        deltaT = item2medT - item1medT
+        deltaQ = item2medQ - item1medQ
+        if direct1:     
+            if deltaQ > 0 and deltaT < 0:
+                cond = False
+                break
+            elif deltaQ < 0 and deltaT > 0:
+                cond = False
+                break
+        else:
+            if deltaQ > 0 and deltaT > 0:
+                cond = False
+                break
+            elif deltaQ < 0 and deltaT < 0:
+                cond = False
+                break
+        if max_gap3 > 0:
+            if abs(deltaT) > abs(min_deltaT):
+                min_deltaT = deltaT
+            if abs(deltaQ) > abs(min_deltaQ):
+                min_deltaQ = deltaQ
+    if not cond:
+        messagefunc("synteny check: subcontig split, dQ "+str(deltaQ)+", dT "+str(deltaT), cols1, debugfile1)
+    if max_gap3 > 0:
+        if abs(min_deltaT) > max_gap3 or abs(min_deltaQ) > max_gap3:
+            cond = False
+            messagefunc("gap check: subcontig split, min dQ "+str(min_deltaQ)+", mit dT "+str(min_deltaT), cols1, debugfile1)
+    return cond
+
 
 #join chunks in correct order
 #all coordinates are returned in forward orientation, direction maintained by [direct]
@@ -980,10 +1034,10 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
     return returnlist
 
 #function to run hit sticher on reciprocal and reference tables
-def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, cols, debugfile):
+def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, max_gap1, cols, debugfile):
     returndict = {}
     for querykey, queryval in inpdict.items():
-        stiched_hit_dict = hit_sticher(queryval, metric, metricR, hit_overlap, ac2, cols, debugfile)
+        stiched_hit_dict = hit_sticher(queryval, metric, metricR, hit_overlap, ac2, max_gap1, cols, debugfile)
         returndict[querykey] = stiched_hit_dict
     return returndict
 
@@ -1032,7 +1086,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             messagefunc(msg, cols, debugfile, False)
             warninglist.append(msg)
         else:
-            msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val[2]])+" ".join([str(x) for x in best_ref_val[1]])
+            msg = "best ref: "+",".join(best_ref_name)+"; "+" ".join([str(x) for x in best_ref_val[2]])+" "+" ".join([str(x) for x in best_ref_val[1]])
             messagefunc(msg, cols, debugfile)
             # check out sample to reference matches
             if targetkey1 in rec_dict: #checking for best contig for Q in current sample
@@ -1077,14 +1131,14 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                     msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                     messagefunc(msg, cols, debugfile)
                     warninglist.append(msg)
-                    cond = False
+                    # cond = False
                 else:
                     msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
                     messagefunc(msg, cols, debugfile)
                     if best_rec_name not in best_ref_name:
                         cond = False
                         messagefunc("reciprocator: target "+targetkey1+" removed from query "+query+": reciprocal condition violated", cols, debugfile)
-                msg = "coordinates in forward search: "+" ".join([str(x) for x in queryval[2]])
+                msg = "coordinates in forward search: "+" ".join([str(x) for x in queryval[2]])+", scores "+" ".join([str(x) for x in queryval[1]])
                 messagefunc(msg, cols, debugfile)
             else:
                 msg = "no matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
@@ -1098,6 +1152,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         warninglist.append(msg)
         if rmrecnf:
             cond = False
+    print >> debugfile, cond
     return cond
 
 #function to rank targets based on their scores
@@ -1506,7 +1561,7 @@ else:
 #reciprocal table input
 if rec_search != None:
     target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, acR, False, cols, debugfile_generic)
-    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, cols, debugfile_generic)
+    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, max_gap, cols, debugfile_generic)
 else:
     target_ref = None
 
@@ -1555,7 +1610,7 @@ for b in blastlist:
     final_target_table = {}
     
     #run target processor
-    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, cols, debugfile)
+    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, max_gap, cols, debugfile)
     
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, metricC, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
@@ -1606,8 +1661,8 @@ for b in blastlist:
     debugfile.close()
 
 print len(warninglist)
-for w in warninglist:
-    print w
+# for w in warninglist:
+#     print w
 
 print >> debugfile_generic, "done"
 debugfile_generic.close()
