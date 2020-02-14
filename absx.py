@@ -45,6 +45,7 @@ optional.add_argument('--rescale-metric', dest='metricR', action='store_true', h
 optional.add_argument('--metric-merge-corr', metavar='N', help='reduce combined metric by this value',dest="metricC", type=float, default=0.75)
 optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not run hit sticher', default=False)
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
+optional.add_argument('--keep-strand', dest='keep_strand', action='store_true', help='keep original contig direction', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 #add possibility of single blast file and multiple fasta files
@@ -83,7 +84,10 @@ else:
     else:
         run_hs = True
         interstich = vars(args)["interstich"]
-
+    if extractiontype == "n" and vars(args)["keep_strand"]:
+        keep_strand = True
+    else:
+        keep_strand = False
     if vars(args)["trans_out"]:
         if extractiontype == "s" or extractiontype == "a":
             if ac == "aa-aa" or ac == "tdna-aa":
@@ -1300,7 +1304,7 @@ def median(lst):
 
 
 #function to extract sequence from file and modify it
-def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, metricR):
+def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, metricR, keep_strand):
     finalseq = Seq("")
     seqlen = len(seq.seq)
     direct = inplist[0][0]
@@ -1383,7 +1387,7 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, met
             finalseq += tempseq.translate()
         else:
             finalseq += tempseq
-    if not direct and extractiontype != "a" and extractiontype != "s":
+    if not direct and extractiontype != "a" and extractiontype != "s" and keep_strand == False:
         finalseq = finalseq.reverse_complement()
     return finalseq
 
@@ -1406,7 +1410,7 @@ def dumper(inplist, extractiontype, trans_out2, ac2):
     return finalseq
 
 #function to control sequence processing
-def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, cols1, debugfile1):
+def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, keep_strand, cols1, debugfile1):
     c1 = len(final_target_table1)
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
     if outM1 == "query":
@@ -1432,7 +1436,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                             if targetname == seq.id and tgt_index_name not in target_set[check_name]: #found target in the query table and this particular version of target wasnt used
                                 #get the sequence
                                 messagefunc(str(c1)+" EXTRACTING: contig "+targetname+", query "+qname, cols1, debugfile1)
-                                s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, ac1, metric, metricR)
+                                s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, ac1, metric, metricR, keep_strand)
                                 print >> debugfile1, "- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1]
                                 if num_contigs == 1:
                                     #check if same target was used:
@@ -1637,7 +1641,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
                 messagefunc("--------scanning the target---------", cols, debugfile)
-                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
+                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
         else:
             if filefolder == "M":
                 seqname = b[:-6].split("/")[-1]
@@ -1656,7 +1660,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
             messagefunc("--------scanning the target---------", cols, debugfile)
-            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, cols, debugfile)
+            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
 
     debugfile.close()
 
