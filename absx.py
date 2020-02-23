@@ -47,11 +47,13 @@ optional.add_argument('--no-hs', dest='no_hs', action='store_true', help='do not
 optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run hit sticher on reciprocal table (slow)', default=False)
 optional.add_argument('--keep-strand', dest='keep_strand', action='store_true', help='keep original contig direction', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
+optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help='use HMMER contig score instead of domain score', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
 #bed parser for reference
+#for hmmer with domains use the contig score as an amalgamated contig score
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -62,6 +64,7 @@ else:
     blastfilearg = vars(args)["blastfilearg"]
     filefolder = vars(args)["filefolder"]
     bt = vars(args)["bt"]
+    hmmerg = vars(args)["hmmerg"]
     if bt == "hmmer18":
         if vars(args)["extractiontype"] != "n":
             print "only whole contig extraction is supported for hmmer18 tables, option -x ignored"
@@ -288,7 +291,7 @@ def rowfunc(row, aligntype):
 
 
 #function for parsing hmmer output tables
-def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, cols, debugfile):
+def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     targetdict = {}
     hmmfile = open(b, "rU")
@@ -371,10 +374,12 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, cols, debugfile):
                         if target_f < 0:
                             target_f = 0
                         target_r = ctg_length-int(line[target2])*3-2+frame
-                    outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
+                    # outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
                     # print >> debugfile, outrow
                     # print >> debugfile, line
                     # sys.exit()
+                if bt1 == "hmmer22" and hmmerg1:
+                    outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[6]), float(line[7]), 0.0]
                 else:
                     outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
                 #populate target table
@@ -1592,7 +1597,7 @@ for b in blastlist:
     if bt == "blast":
         output = readblastfilefunc(b, evalue, bitscore, identity, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
     else:
-        output = readhmmerfilefunc(b, evalue, bitscore, bt, ac, cols, debugfile)
+        output = readhmmerfilefunc(b, evalue, bitscore, bt, ac, hmmerg, cols, debugfile)
     #read reciprocal alignment table
     if rec_search != None:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
