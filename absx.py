@@ -48,6 +48,7 @@ optional.add_argument('--ref-hs', dest='ref_hs', action='store_true', help='run 
 optional.add_argument('--keep-strand', dest='keep_strand', action='store_true', help='keep original contig direction', default=False)
 optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true', help='remove hits without matches in reciprocal search', default=False)
 optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help='use HMMER contig score instead of domain score', default=False)
+optional.add_argument('--amalgamate-hits', dest='amlghitscore', action='store_true', help='combine score for different hits of the same contig', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
@@ -152,6 +153,7 @@ else:
     metricC = vars(args)["metricC"]
     ref_hs = vars(args)["ref_hs"]
     max_gap = vars(args)["max_gap"]
+    amlghitscore = vars(args)["amlghitscore"]
 
 
 dashb = "#"*75
@@ -395,7 +397,7 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile)
     return targetdict
 
 #first main function
-def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, cols, debugfile):
+def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC, cols, debugfile):
     messagefunc(dashb, cols, debugfile)
     messagefunc("running target processor...", cols, debugfile)
     outdict = {}
@@ -412,7 +414,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         #run hit overlapper and sticher 
         messagefunc("running hit processor", cols, debugfile)
         if run_hs1:
-            tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, max_gap1, cols, debugfile) #stiched subcontigs per query
+            tgt_proc_out = hit_sticher(targetval, metric, metricR, hit_overlap, ac1, max_gap1, amlghitscore, metricC, cols, debugfile) #stiched subcontigs per query
         else:
             tgt_proc_out = reformat_hits(targetval, metric, metricR, cols, debugfile)
         #run local range reciprocal check
@@ -535,7 +537,7 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
 
 
 #function to process hit of the same target (remove redundant, order and stich hits, make subcontigs)
-def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, cols, debugfile):
+def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitscore, metricC, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
         clusters = strand_selector(queryval)
@@ -668,12 +670,12 @@ def hit_sticher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, cols, debu
                 stiched_subcontigs = []
                 messagefunc("running hit sticher...", cols, debugfile)
                 for sbctg in subcontigs:
-                    stiched_subcontig = join_chunks(sbctg, direct)
+                    stiched_subcontig = join_chunks(sbctg, direct, amlghitscore, metricC)
                     stiched_subcontigs.append(stiched_subcontig)
             
             if len(clusters[cluster_index]) == 1:
                 sbctg = clusters[cluster_index].values()
-                stiched_subcontig = join_chunks(sbctg, direct)
+                stiched_subcontig = join_chunks(sbctg, direct, amlghitscore, metricC)
                 stiched_subcontigs.append(stiched_subcontig)
 
         for subcont_index in range(len(stiched_subcontigs)):
@@ -722,7 +724,7 @@ def synteny_check(inplist, item1, direct1, max_gap3, cols1, debugfile1):
 
 #join chunks in correct order
 #all coordinates are returned in forward orientation, direction maintained by [direct]
-def join_chunks(sbctg1, direct1):
+def join_chunks(sbctg1, direct1, amlghitscore1, metricC1):
     # print sbctg1, direct1
     median_query = {}
     start_query = {}
@@ -745,9 +747,10 @@ def join_chunks(sbctg1, direct1):
         if chunk == 0:
             scores_sbctg1 = [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]]
         else:
-            #could use max score as an alternative
-            scores_sbctg1 = [min(scores_sbctg1[0], eval_hit[chunk]), max(scores_sbctg1[1], bit_hit[chunk]), max(scores_sbctg1[2], ident_hit[chunk])]
-            # scores_sbctg1 = amalgamate_scores(scores_sbctg1, [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]])
+            if amlghitscore1:
+                scores_sbctg1 = amalgamate_scores(scores_sbctg1, [eval_hit[chunk], bit_hit[chunk], ident_hit[chunk]], metricC1)
+            else:
+                scores_sbctg1 = [min(scores_sbctg1[0], eval_hit[chunk]), max(scores_sbctg1[1], bit_hit[chunk]), max(scores_sbctg1[2], ident_hit[chunk])]
         #ranges
         start_target_subctg = min(start_target.values())
         end_target_subctg = max(end_target.values())
@@ -1043,10 +1046,10 @@ def reformat_dict(inpdict, rec_dict, target_ref, metric, metricR, hit_overlap, a
     return returnlist
 
 #function to run hit sticher on reciprocal and reference tables
-def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, max_gap1, cols, debugfile):
+def process_aux_tables(inpdict, metric, metricR, hit_overlap, ac2, max_gap1, amlghitscore, metricC, cols, debugfile):
     returndict = {}
     for querykey, queryval in inpdict.items():
-        stiched_hit_dict = hit_sticher(queryval, metric, metricR, hit_overlap, ac2, max_gap1, cols, debugfile)
+        stiched_hit_dict = hit_sticher(queryval, metric, metricR, hit_overlap, ac2, max_gap1, amlghitscore, metricC, cols, debugfile)
         returndict[querykey] = stiched_hit_dict
     return returndict
 
@@ -1570,7 +1573,7 @@ else:
 #reciprocal table input
 if rec_search != None:
     target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, acR, False, cols, debugfile_generic)
-    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, max_gap, cols, debugfile_generic)
+    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, max_gap, amlghitscore, metricC, cols, debugfile_generic)
 else:
     target_ref = None
 
@@ -1603,11 +1606,11 @@ for b in blastlist:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
             rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, amlghitscore, metricC, cols, debugfile)
         elif len(rec_list) == 1:
             rec_out = readblastfilefunc(rec_list[0], None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, amlghitscore, metricC, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
@@ -1619,7 +1622,7 @@ for b in blastlist:
     final_target_table = {}
     
     #run target processor
-    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, max_gap, cols, debugfile)
+    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, max_gap, amlghitscore, metricC, cols, debugfile)
     
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, metricC, contignum, ctg_ovlp, interstich, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
