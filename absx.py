@@ -1603,11 +1603,11 @@ for b in blastlist:
         if rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast" in rec_list:
             rec_out = readblastfilefunc(rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, cols, debugfile)
         elif len(rec_list) == 1:
             rec_out = readblastfilefunc(rec_list[0], None, None, None, False, acr, False, cols, debugfile)
             if ref_hs:
-                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, cols, debugfile)
+                rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, cols, debugfile)
         else:
             print "problem with finding the reciprocal search file"
             print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
