@@ -1,5 +1,5 @@
-# absx
-Alignment-Based Sequence eXtraction
+# ALiBaSeq
+Alignment-Based Sequence extraction
 
 ## Dependencies
 Python 2.7, Biopython
@@ -7,7 +7,7 @@ Python 2.7, Biopython
 ## Installation
 Clone the repository like this:
 ```
-https://github.com/AlexKnyshov/absx.git
+https://github.com/AlexKnyshov/alibaseq.git
 ```
 
 ## Workflow
@@ -30,7 +30,7 @@ mv *.blast blast_results
 #### Sequence extraction
 Basic extraction can be done like this:
 ```
-python absx.py -x b -f S -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -m b-i-e -t ./assembly_folder/
+python alibaseq.py -x b -f S -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -m b-i-e -t ./assembly_folder/
 ```
 
 ### Reciprocal search
@@ -46,7 +46,7 @@ In order to assess the best matches of queries to the reference assembly, it als
 #### Sequence extraction
 Sequence extraction with consideration of reciprocal best hit can be done as follows:
 ```
-python absx.py -x b -f S -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -m b-i-e -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast
+python alibaseq.py -x b -f S -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -m b-i-e -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast
 ```
 ### Hmmer usage
 coming soon...
