@@ -461,44 +461,6 @@ def actual_reciprocator(inpdict, recip_overlap, metric, metricR):
     return returndict
 
 
-#helper function for hit stitcher
-#get hit dictionary, bucket dictionary, and bucket counter, process and return these variables
-def stitcher_helper(refhitkey1, hitkey1, hitdict1, bucketdict1, nbuck1, opt1, cols1, debugfile1):
-    if opt1 == "add":
-        #both are in hitdict, however may not be in bucketdict
-        #keep both, asign different buckets
-        if refhitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
-            bucketdict1[refhitkey1] = nbuck1
-            nbuck1 += 1
-        if hitkey1 not in bucketdict1: #same here
-            bucketdict1[hitkey1] = nbuck1
-            nbuck1 += 1
-    elif opt1 == "samebuck":
-        #both are in hitdict, if in bucketdict - assign same.
-        if refhitkey1 in bucketdict1: #if one present, the other must have not been checked before
-            bucketdict1[hitkey1] = bucketdict1[refhitkey1] #put in ref bucket
-        elif hitkey1 in bucketdict1:
-            bucketdict1[refhitkey1] = bucketdict1[hitkey1]
-        else:
-            bucketdict1[refhitkey1] = nbuck1
-            bucketdict1[hitkey1] = nbuck1
-        #no need to up the current bucket since only old buckets were worked with
-    elif opt1 == "rmhit":
-        if refhitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
-            bucketdict1[refhitkey1] = nbuck1
-            nbuck1 += 1
-        del hitdict1[hitkey1]
-        if hitkey1 in bucketdict1:
-            del bucketdict1[hitkey1]
-    elif opt1 == "rmref":
-        if hitkey1 not in bucketdict1: #otherwise it must have already gotten the bucket number
-            bucketdict1[hitkey1] = nbuck1
-            nbuck1 += 1
-        del hitdict1[refhitkey1]
-        if refhitkey1 in bucketdict1:
-            del bucketdict1[refhitkey1]
-    return hitdict1, bucketdict1, nbuck1
-
 def reformat_hits(inpdict, metric, metricR, cols, debugfile):
     returnlist = {} #all queries for the target go here
     for querykey, queryval in inpdict.items():
@@ -616,9 +578,14 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
                                     ovlp_processed.append([])
                             #if non overlapping on query - add current to the layer, make it the new current
                             else:
-                                # print best_ind
-                                ovlp_processed[best_ind].append(currently_processing[best_ind])
-                                currently_processing[best_ind] = trans_dict[sorted_startpoints[i]]
+                                #first check synteny and gap
+                                if synteny_check(currently_processing[best_ind], trans_dict[sorted_startpoints[i]], direct, max_gap2, cols, debugfile):
+                                    ovlp_processed[best_ind].append(currently_processing[best_ind])
+                                    currently_processing[best_ind] = trans_dict[sorted_startpoints[i]]
+                                #otherwise, add as separate layer
+                                else:
+                                    currently_processing.append(trans_dict[sorted_startpoints[i]])
+                                    ovlp_processed.append([])
                     #finalize current
                     for cp in range(len(currently_processing)):
                         ovlp_processed[cp].append(currently_processing[cp])
@@ -642,42 +609,32 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
     return returnlist
 
 #checks syntheny and gap between hits
-def synteny_check(inplist, item1, direct1, max_gap3, cols1, debugfile1):
+def synteny_check(item1, item2, direct1, max_gap3, cols1, debugfile1):
     cond = True
     item1medT = median([item1[0],item1[1]])
     item1medQ = median([item1[3],item1[4]])
-    min_deltaT = 0
-    min_deltaQ = 0
-    for item2 in inplist:
-        item2medT = median([item2[0],item2[1]])
-        item2medQ = median([item2[3],item2[4]])
-        deltaT = item2medT - item1medT
-        deltaQ = item2medQ - item1medQ
-        if direct1:     
-            if deltaQ > 0 and deltaT < 0:
-                cond = False
-                break
-            elif deltaQ < 0 and deltaT > 0:
-                cond = False
-                break
-        else:
-            if deltaQ > 0 and deltaT > 0:
-                cond = False
-                break
-            elif deltaQ < 0 and deltaT < 0:
-                cond = False
-                break
-        if max_gap3 > 0:
-            if abs(deltaT) > abs(min_deltaT):
-                min_deltaT = deltaT
-            if abs(deltaQ) > abs(min_deltaQ):
-                min_deltaQ = deltaQ
-    if not cond:
-        messagefunc("synteny check: subcontig split, dQ "+str(deltaQ)+", dT "+str(deltaT), cols1, debugfile1)
-    if max_gap3 > 0:
-        if abs(min_deltaT) > max_gap3 or abs(min_deltaQ) > max_gap3:
+    item2medT = median([item2[0],item2[1]])
+    item2medQ = median([item2[3],item2[4]])
+    deltaT = item2medT - item1medT
+    deltaQ = item2medQ - item1medQ
+    if direct1:     
+        if deltaQ > 0 and deltaT < 0:
             cond = False
-            messagefunc("gap check: subcontig split, min dQ "+str(min_deltaQ)+", mit dT "+str(min_deltaT), cols1, debugfile1)
+        elif deltaQ < 0 and deltaT > 0:
+            cond = False
+    else:
+        if deltaQ > 0 and deltaT > 0:
+            cond = False
+        elif deltaQ < 0 and deltaT < 0:
+            cond = False
+    if not cond:
+        print >> debugfile1, item1, item2
+        messagefunc("synteny check: direction "+str(direct1)+", dQ "+str(deltaQ)+", dT "+str(deltaT), cols1, debugfile1)
+    if max_gap3 > 0:
+        if abs(deltaT) > max_gap3 or abs(deltaQ) > max_gap3:
+            cond = False
+            print >> debugfile1, item1, item2
+            messagefunc("gap check: direction "+str(direct1)+", min dQ "+str(deltaQ)+", mit dT "+str(deltaT), cols1, debugfile1)
     return cond
 
 
@@ -1169,6 +1126,11 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstit
                     else:
                         cond = True
                         for contig2 in current_list:
+                            #check names and directions - do not allow same contig be used in multiple directions:
+                            if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
+                                if contig1[1][0][0] != contig2[1][0][0]:
+                                    cond = False
+                                    break
                             stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
                             if stitcher_overlap > contig_overlap:
                                 cond = False
