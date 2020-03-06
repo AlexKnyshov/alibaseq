@@ -9,7 +9,7 @@ import csv
 import sys
 import argparse
 
-parser = argparse.ArgumentParser(description='ABSX (Alignment-Based Sequence eXtraction)',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser = argparse.ArgumentParser(description='ALiBaSeq (Alignment-Based Sequence extraction)',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser._action_groups.pop()
 required = parser.add_argument_group('required arguments')
@@ -21,7 +21,7 @@ required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n 
 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
 optional.add_argument('-q', metavar='query', help='query file(s) to which extracted results are to be appended; if not specified, sequences are extracted into blank files',dest="queryf")
-optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="absx_out")
+optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="alibaseq_out")
 optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
 optional.add_argument('-i', metavar='N', help='identity cutoff',dest="identity", type=float, default=0.0)
@@ -54,7 +54,6 @@ optional.add_argument('--max-gap', metavar='N', help='max gap between hits on ei
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
 #bed parser for reference
-#for hmmer with domains use the contig score as an amalgamated contig score
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -535,6 +534,19 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
         print >> debugfile, querykey, ", selected best hit:", returnlist[indexer_function(querykey,str(0))]
     return returnlist
 
+#function to discard worse translation hits
+#input is dictionary {linecounter: [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]}
+#return list of dictionaries
+def trans_selector(inpdict):
+    #split into things per direction
+    cluster1 = {}
+    cluster2 = {}
+    for hitkey, hitval in inpdict.items():
+        if hitval[2] == True:
+            cluster1[hitkey] = hitval
+        else:
+            cluster2[hitkey] = hitval
+    return [cluster1, cluster2]
 
 #function to process hit of the same target (remove redundant, order and stitch hits, make subcontigs)
 def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitscore, metricC, cols, debugfile):
@@ -545,133 +557,81 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
         stitched_subcontigs = [] #stitched subcontigs for a query go here
         for cluster_index in range(2):
             direct = directions[cluster_index]
-            #add conditions for no hits and just 1 hit
+            #add condition for no hits?
             if len(clusters[cluster_index]) > 1:
                 messagefunc("running hit overlapper...", cols, debugfile)
                 #this is a hitlist {hit index: [hit val]}
                 hitdict = clusters[cluster_index]
                 messagefunc("direction: "+str(direct)+", number of hits: "+str(len(clusters[cluster_index])), cols, debugfile)
-                ovlp = True
-                #this part will overlap hits of same query=target areas, as well as remove spurious hits
-                #this will be a dict with {hit index as in hitlist: bucket}. -1 bucket for dumped hits
-                bucketdict = {}
-                nbuck = 0
-                while ovlp:
-                    ovlp = False
-                    if len(hitdict) == 1:
-                        break
-                    else:
-                        for refhitkey in hitdict.keys():
-                            #processing a particular refhitkey
-                            if ovlp:
-                                break
+                subcontigs = [] 
+                if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
+                    hitdicts = trans_selector(hitdict)
+                else:
+                    hitdicts = [hitdict]
+                for trans_dict in hitdicts:
+                    startpoints = {}
+                    endpoints = {}
+                    for hitkey, hitval in trans_dict.items():
+                        startpoints[hitkey] = min(hitval[3], hitval[4])
+                        endpoints[hitkey] = max(hitval[3], hitval[4])
+                    sorted_startpoints = sorted(startpoints, key=lambda x: startpoints[x])
+                    sorted_endpoints = sorted(endpoints, key=lambda x: endpoints[x])
+                    currently_processing = []
+                    ovlp_processed = []
+                    cur_number = 0
+                    for i in range(len(sorted_startpoints)):
+                        if i == 0:
+                            currently_processing.append(trans_dict[sorted_startpoints[i]])
+                            ovlp_processed.append([])
+                        else:
+                            maxtovlp = []
+                            maxqovlp = []
+                            combovlp = []
+                            for cp in range(len(currently_processing)):
+                                tovlp = getDist(trans_dict[sorted_startpoints[i]][0:2],currently_processing[cp][0:2])
+                                qovlp = getDist(trans_dict[sorted_startpoints[i]][3:5],currently_processing[cp][3:5])
+                                maxtovlp.append(tovlp)
+                                maxqovlp.append(qovlp)
+                                combovlp.append(tovlp+qovlp)
+                            best_ind = combovlp.index(max(combovlp))
+                            # print trans_dict[sorted_startpoints[i]], currently_processing[best_ind], maxtovlp[best_ind], maxqovlp[best_ind], maxqovlp[best_ind] % 3
+                            #if closest hit overlaps on query
+                            if maxqovlp[best_ind] > hit_overlap:
+                                #if also overlaps on target - extend proper layer
+                                if maxtovlp[best_ind] > 0:
+                                    if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
+                                        if maxqovlp[best_ind] % 3 == 0:
+                                            currently_processing[best_ind] = extend_hit(currently_processing[best_ind], trans_dict[sorted_startpoints[i]])
+                                        #pic worst, possibly replacing hit
+                                        else:
+                                            comp0 = compare_scores(currently_processing[best_ind][0:2],currently_processing[best_ind][6:9], trans_dict[sorted_startpoints[i]][0:2],trans_dict[sorted_startpoints[i]][6:9], metric, metricR)
+                                            #if current is better, do nothing, else replace current with i
+                                            if comp0 == 1:
+                                                currently_processing[best_ind] = trans_dict[sorted_startpoints[i]]
+                                    else:
+                                        currently_processing[best_ind] = extend_hit(currently_processing[best_ind], trans_dict[sorted_startpoints[i]])
+                                #else overlaps on query but not target - add separate layer, keep current in the current layer
+                                else:
+                                    currently_processing.append(trans_dict[sorted_startpoints[i]])
+                                    ovlp_processed.append([])
+                            #if non overlapping on query - add current to the layer, make it the new current
                             else:
-                                for hitkey, hitval in hitdict.items():
-                                    if ovlp:
-                                        break
-                                    else:
-                                        if hitkey != refhitkey:
-                                            tovlp = getOverlap(hitval[0:2],hitdict[refhitkey][0:2])
-                                            qovlp = getOverlap(hitval[3:5],hitdict[refhitkey][3:5])
-                                            ##process overlaps, only one option will work
-                                            if tovlp == 0:
-                                                if 0 <= qovlp <= hit_overlap:
-                                                    ovlp = False
-                                                    hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "add", cols, debugfile)
-                                                    
-                                                #this is this case for subcontig splitter
-                                                elif qovlp > hit_overlap:
-                                                    #keep both but assign same bucket
-                                                    ovlp = False
-                                                    hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "samebuck", cols, debugfile)
-                                                    
-                                            else:
-                                                #keep only one, remove the other by removing from hitdict and bucketdict
-                                                if tovlp == qovlp:
-                                                    # check frame when translating options are used
-                                                    if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
-                                                        startshift = abs(min(hitval[0], hitval[1])-min(hitdict[refhitkey][0], hitdict[refhitkey][1]))-1
-                                                        if startshift > 0 and startshift%3 == 0:
-                                                            # in frame, extending range of refhit
-                                                            hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
-                                                            hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-                                                        else:
-                                                            # not in frame, removing worst
-                                                            comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
-                                                            if comp0 == 0 or comp0 == 2:
-                                                                # print >> debugfile, hitdict[hitkey], "deleted4"
-                                                                hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-                                                            else:
-                                                                # print >> debugfile, hitdict[refhitkey], "deleted5"
-                                                                hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
-                                                                
-                                                    else:
-                                                        # frame does not matter for blastn, blastp, hmmer, extend
-                                                        hitdict[refhitkey] = extend_hit(hitdict[refhitkey],hitdict[hitkey], tovlp)
-                                                        hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-                                                else:
-                                                    # print "target ovlp is larger than query, remove the worst, set bool to true"
-                                                    comp0 = compare_scores(hitdict[refhitkey][0:2],hitdict[refhitkey][6:9], hitdict[hitkey][0:2],hitdict[hitkey][6:9], metric, metricR)
-                                                    if comp0 == 0 or comp0 == 2:
-                                                        # print >> debugfile, hitdict[hitkey], "deleted7",hitdict[refhitkey][6:9],hitdict[hitkey][6:9]
-                                                        hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmhit", cols, debugfile)
-
-                                                    else:
-                                                        # print >> debugfile, hitdict[refhitkey], "deleted8"
-                                                        hitdict, bucketdict, nbuck = stitcher_helper(refhitkey, hitkey, hitdict, bucketdict, nbuck, "rmref", cols, debugfile)
-                                                ovlp = True
-                                                # print hitdict, bucketdict
-                                                break
-                        if not ovlp:
-                            messagefunc("no more overlaps", cols, debugfile)
-                #this part will split hits into different subcontig clusters and
-                # print hitdict, bucketdict
-                subcontigs = [] #this will contain multiple subcontigs in case of splitting
-                while True:
-                    sbctg = [] #this will contain hits of a particular subcontig, for future stitching
-                    for buck2 in set(bucketdict.values()):
-                        tempbuck = {}
-                        for hitkey, bucket in bucketdict.items():
-                            if bucket == buck2:
-                                # assemble tempbuck as a subset of hitdict for a given bucket
-                                tempbuck[hitkey] = hitdict[hitkey]
-                        if len(tempbuck) > 1:
-                            #sort hits, pick best , 6--eval float(row[10]), 7--bit float(row[11]), 8--ident float(row[2])
-                            bhit = -1
-                            bhitval = []
-                            for htnm in tempbuck.keys():
-                                if len(sbctg) == 0 or synteny_check(sbctg, tempbuck[htnm], direct, max_gap2, cols, debugfile):
-                                    if bhit == -1:
-                                        bhit = htnm
-                                        bhitval = tempbuck[htnm]
-                                    else:
-                                        comp1 = compare_scores(bhitval[0:2],bhitval[6:9], tempbuck[htnm][0:2],tempbuck[htnm][6:9], metric, metricR)
-                                        #if tempbuck[htnm] is better. otherwise keep best as is
-                                        if comp1 == 1:
-                                            bhit = htnm
-                                            bhitval = tempbuck[htnm]
-                                            #potentially need breaking and restarting the loop?
-                            if bhit != -1:
-                                sbctg.append(tempbuck[bhit]) #add best to subcontig
-                                del bucketdict[bhit] #remove the best from further assessments
-                                del hitdict[bhit] #same
-                        elif len(tempbuck) == 1:
-                            bhit = tempbuck.keys()[0]
-                            if len(sbctg) == 0 or synteny_check(sbctg, tempbuck[bhit], direct, max_gap2, cols, debugfile):
-                                sbctg.append(tempbuck[bhit]) #add best to subcontig
-                                del bucketdict[bhit] #remove the best from further assessments
-                                del hitdict[bhit] #same
-                        #else do nothing
-                    if len(sbctg) > 0:
+                                # print best_ind
+                                ovlp_processed[best_ind].append(currently_processing[best_ind])
+                                currently_processing[best_ind] = trans_dict[sorted_startpoints[i]]
+                    #finalize current
+                    for cp in range(len(currently_processing)):
+                        ovlp_processed[cp].append(currently_processing[cp])
+                    for sbctg in ovlp_processed:
                         subcontigs.append(sbctg)
-                    else:
-                        break #exit while loop
+
+                        
                 #this part will stitch hits of subcontigs
                 messagefunc("running hit stitcher...", cols, debugfile)
                 for sbctg in subcontigs:
                     stitched_subcontig = join_chunks(sbctg, direct, amlghitscore, metricC)
                     stitched_subcontigs.append(stitched_subcontig)
-            
+            #if only one hit
             if len(clusters[cluster_index]) == 1:
                 sbctg = clusters[cluster_index].values()
                 stitched_subcontig = join_chunks(sbctg, direct, amlghitscore, metricC)
@@ -795,7 +755,7 @@ def join_contigs(inplist):
     return [start_query_superctg, end_query_superctg], returnlist
 
 #function to merge overlapping hits. resulting hit gets highest score
-def extend_hit(item1, item2, tovlp):
+def extend_hit(item1, item2):
     outlist = []    
     # len1 = float(max(item1[0], item1[1]) - min(item1[0], item1[1]))
     # len2 = float(max(item2[0], item2[1]) - min(item2[0], item2[1]))
@@ -1273,6 +1233,20 @@ def getOverlap(a, b):
     b1=max(b)
     return max(0, min(a1, b1) - max(a0, b0))
 
+#function to compute overlap between two ranges supplied as lists with start and end
+#returns overlap value
+def getDist(a, b):
+    a0=min(a)-1 #start one pos less to detect 1 position overlap
+    a1=max(a)
+    # am = (a0+a1)/2
+    b0=min(b)-1 #start one pos less to detect 1 position overlap
+    b1=max(b)
+    # bm = (b0+b1)/2
+    if a0 < b0:
+        return a1-b0
+    else:
+        return b1-a0
+
 #function for writing actual sequence to file
 def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lentarget):
     if outM1 == "target":
@@ -1523,7 +1497,7 @@ def estimate_survival(init_queries, init_targets, survived_queries, survived_tar
 
 #---------------------------------------------------------------------#
 ############################ main script ##############################
-debugfile_generic = open("absx.log", "w")
+debugfile_generic = open("alibaseq.log", "w")
 
 #get terminal window size
 if not os.popen('stty size', 'r').read():
@@ -1532,7 +1506,7 @@ else:
     rows, cols = os.popen('stty size', 'r').read().split()
     cols = int(cols)-10
 
-messagefunc("absx run with option "+filefolder+" selected", cols, debugfile_generic, False)
+messagefunc("alibaseq run with option "+filefolder+" selected", cols, debugfile_generic, False)
 messagefunc("command line parameters: "+' '.join(sys.argv), cols, debugfile_generic, False)
 
 
@@ -1593,7 +1567,7 @@ for b in blastlist:
     survived_targets = set()
     messagefunc("target table "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
-    debugfile = open(b.split("/")[-1]+"_absx.log", "w")
+    debugfile = open(b.split("/")[-1]+"_alibaseq.log", "w")
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
