@@ -874,7 +874,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
             ref_query_range = inpdict[querykey][2]
             ref_query_scores = inpdict[querykey][1]
             for key in querylist: #running loop over other queries
-                if key not in badkeys and key != querykey: #all other queries
+                if key not in badkeys and key.split("@")[0] != querykey.split("@")[0]: #all other queries
                     current_query_range = inpdict[key][2]
                     current_query_scores = inpdict[key][1]
                     if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
