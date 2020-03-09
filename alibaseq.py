@@ -80,7 +80,7 @@ else:
     else:
         ac = vars(args)["ac"]
         extractiontype = vars(args)["extractiontype"]
-    if vars(args)["no_hs"] or extractiontype == "n":
+    if vars(args)["no_hs"] or extractiontype == "n" or extractiontype == "s":
         print "without hit stitcher, contig stitching is disabled, option --is ignored"
         run_hs = False
         interstitch = False
@@ -478,18 +478,18 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
                 if best_index1 == None:
                     best_index1 = hit_index
                     best_dir1 = [direct]
-                    best_range1 = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                    best_range1 = [min(hits1[hit_index][0:2]),max(hits1[hit_index][0:2]),min(hits1[hit_index][3:5]),max(hits1[hit_index][3:5])]
                     best_score1 = hits1[hit_index][6:9]
                     best_data1 = best_range1+best_score1
                 else:
                     hit_scores = hits1[hit_index][6:9]
-                    hit_ranges = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                    hit_ranges = [min(hits1[hit_index][0:2]),max(hits1[hit_index][0:2]), min(hits1[hit_index][3:5]), max(hits1[hit_index][3:5])]
                     hit_data = hit_ranges+hit_scores
                     comp1 = compare_scores(best_range1, best_score1, hit_ranges, hit_scores, metric, metricR)
                     if comp1 == 1:
                         best_index1 = hit_index
                         best_dir1 = [direct]
-                        best_range1 = hits1[hit_index][0:2]+hits1[hit_index][3:5]
+                        best_range1 = [min(hits1[hit_index][0:2]),max(hits1[hit_index][0:2]), min(hits1[hit_index][3:5]), max(hits1[hit_index][3:5])]
                         best_score1 = hits1[hit_index][6:9]
                         best_data1 = best_range1+best_score1
         returnlist[indexer_function(querykey,str(0))] = [best_dir1, best_score1, best_range1, best_data1]
@@ -873,19 +873,23 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
             cond = True
             ref_query_range = inpdict[querykey][2]
             ref_query_scores = inpdict[querykey][1]
+            ref_query_direct = inpdict[querykey][0]
             for key in querylist: #running loop over other queries
                 if key not in badkeys and key.split("@")[0] != querykey.split("@")[0]: #all other queries
                     current_query_range = inpdict[key][2]
                     current_query_scores = inpdict[key][1]
+                    current_query_direct = inpdict[key][0]
                     if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
-                        # print >> debugfile, "comparing", key, current_query_range, current_query_scores, "with ref", querykey, ref_query_range, ref_query_scores
+                        print >> debugfile, "comparing", key, current_query_direct, current_query_range, current_query_scores, "with ref", querykey, ref_query_direct, ref_query_range, ref_query_scores
                         comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
                         if comp1 == 1:
                             cond = False
+                            print >> debugfile, "bad", querykey
                             # print >> debugfile, ref_query_range, ref_query_scores, current_query_range, current_query_scores
                             badkeys.add(querykey)
                             break
                         elif comp1 == 0:
+                            print >> debugfile, "bad", key
                             badkeys.add(key)
                         elif comp1 == 2:
                             wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
@@ -1299,21 +1303,12 @@ def get_sequence(inplist, seq, extractiontype, fls, trans_out1, ac2, metric, met
     elif extractiontype == "n":
         finalseq = seq.seq
     elif extractiontype == "s":
-        best_hit = None
-        for i in hits:
-            if type(i) is not int:
-                if best_hit == None:
-                    best_hit = i
-                else:
-                    comp1 = compare_scores(best_hit[0:2], best_hit[4:7], i[0:2], i[4:7], metric, metricR)
-                    if comp1 == 1:
-                        best_hit = i
         if ac2 == "tdna-aa":
-            start = (best_hit[0]+2)/3-1
-            end = best_hit[1]/3
+            start = (hits[0]+2)/3-1
+            end = hits[1]/3
         else:
-            start = best_hit[0]-1
-            end = best_hit[1]
+            start = hits[0]-1
+            end = hits[1]
         if start - fls < 0:
             start = 0
         else:
