@@ -1,5 +1,4 @@
 
-![Screenshot](https://github.com/erg55/alibaseq/blob/master/alibaseqlogo.pdf)
 # ALiBaSeq
 Alignment-Based Sequence extraction
 
