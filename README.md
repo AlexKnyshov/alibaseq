@@ -91,15 +91,17 @@ option `--acR` specifies the alignment table type for the reference table (suppl
 
 option `-x` specifies the extraction type: `n` extracts the whole contig, `s` extracts only single best hit, `a` extracts all hit regions and joins them together, `b`extracts region between two outmost hit regions. (MANDATORY, NO DEFAULT)
 
+![extraction_modes.png](extraction_modes.png)
+
 option `-c` specifies the max number of (super)contigs to extract. By default it is set to 0, which causes all supercontigs to be extracted. If a single (best matching) contig needs to be extracted, so `-c` should be set to 1. (default: 0) 
 
-option `--fl` specifies flanks on each side in bp. This option is only available when `-x` is set to `s` or `a`. (default: 0)
+option `--fl` specifies flanks on each side in bp. This option is only available when `-x` is set to `s` or `b`. (default: 0)
 
 option `--translate` turns on sequence translation (for `-x s` or `-x a`), only works when appropriate `--ac`. (default: False)
 
 option `--om` specifies the way sequences are output. When set to `query`, sequences are grouped into per query files, when set to `target`, they are grouped into per target files, and when set to `combined`, all sequences from all tables are extracted into a single file. (default: query)
 
-option `--keep-strand` turns off sequence reversal according to the query and outputs sequence in original direction. (default: False)
+option `--keep-strand` turns off sequence reversal according to the query and outputs sequence in original direction (only has effect in combination with `-x n`). (default: False)
 
 ## scoring
 
@@ -109,15 +111,17 @@ option `-B` specifies the bitscore cutoff. Nothing will be considered below this
 
 option `-i` specifies the identity cutoff. Nothing will be considered below this cutoff as it filters out initial alignment table parsing. (default: 0.0)
 
-option `-m` specifies the order of metrics to be used for discriminating between hits/contigs (e - evalue, b - bitscore, i - identity) (default: e/b-i)
+option `-m` specifies the order of metrics to be used for discriminating between hits/contigs (e - evalue, b - bitscore, i - identity); by default the evalue and bitscore differentials are compared and if not congruent, identitry is used for final decision. (default: e/b-i)
 
-option `--rescale-metric` rescales the metric value by the length of the match. (default: False)
+option `--rescale-metric` rescales the metric value by the length of the match (not recommended for most situations since bitscore and evalue already incorporate hit sizes) (default: False)
 
 option `--hmmer-global` - for hmmer22 tables only - uses contig scores instead of domain (hit) scores; do not use in combination with `--amalgamate-hits` (default: False)
 
 ## hit stitcher
 
-option `--hit-ovlp` specifies max allowed hit overlap on query, in bp. If two hits overlap more than this amount they are considered to be indeed overlapping. (default: 5)
+option `--hit-ovlp` specifies max allowed hit overlap on query, in bp. If two hits overlap more than this amount, and overlap on target is greater than 0, the hits are considered to be indeed overlapping. (default: 5)
+
+![hit_stitcher.png](hit_stitcher.png)
 
 option `--amalgamate-hits` - when scoring the contig, use combination of scores of the hits and their average identity (default: False)
 
@@ -125,7 +129,7 @@ option `--metric-merge-corr` - used together with `--amalgamate-hits` to reduce 
 
 option `--no-hs` prevents running hit stitcher on the forward search table (default: False)
 
-option `--ref-hs` turns on hit sticher on the reciprocal table (slow) (default: False). Typically reciprocal table is much larger, and takes considerable amount of time to parse. The alternative, default, approach is for a given target region to simply pick the best hit to reference that is located in the same region. (default: False)
+option `--ref-hs` turns on hit sticher on the reciprocal table (slow). Typically reciprocal table is much larger, and takes considerable amount of time to parse. The alternative, default, approach is for a given target region to simply pick the best hit to reference that is located in the same region. (default: False)
 
 option `--max-gap` (if greater than 0) specifies the maximum distance between hits of a contig, if greater hits are split into alternative versions of the same target contig; setting to 0 turns off (default: 0)
 
@@ -135,10 +139,14 @@ option `--is` turns on contig stiching. (default: False)
 
 option `--ctg-ovlp` specifies max allowed contig overlap on query, in bp. If two contigs overlap more than this amount they are considered to be indeed overlapping. (default: 1)
 
+![contig.png](contig.png)
+
 ## homology checks
 
 option `--lr` specifies local single best match check (prevents same part of the target contig being extracted to multiple queries). When set to `range`, each region of the target contig (after joining multiple hits) is allowed to be matched to only one query. When set to `actual`, individual hits are checked for the same condition prior to being joined together. Can be switched off by setting `none`. (default: range)
 
-option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check, in bp. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
+option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check (both "local" and "global" checks), in bp. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
+
+![recip.png](recip.png)
 
 option `--rm-rec-not-found` does not consider contig regions that are found in forward search but not in reverse search; by default, missing data equates to contig passing reciprocal best match criterion (default: False)
