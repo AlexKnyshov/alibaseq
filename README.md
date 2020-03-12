@@ -1,3 +1,5 @@
+
+![Screenshot](https://github.com/erg55/alibaseq/blob/master/alibaseqlogo.pdf)
 # ALiBaSeq
 Alignment-Based Sequence extraction
 ![alibaseqlogo.png](alibaseqlogo.png)
@@ -8,7 +10,7 @@ Python 2.7, Biopython
 ## Installation
 Clone the repository like this:
 ```
-https://github.com/AlexKnyshov/alibaseq.git
+git clone https://github.com/AlexKnyshov/alibaseq.git
 ```
 
 ## Workflow
@@ -54,7 +56,7 @@ Sequence extraction with consideration of reciprocal best hit can be done as fol
 python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast
 ```
 ### Hmmer usage
-for nucleotide HMMER the extraction can be done as follows:
+For a nucleotide HMMER search, the extraction can be done as follows:
 ```
 python alibaseq.py -x b -f M -b ./hmmer_results/ -c 1 -e 1e-05 --is -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast --bt hmmer15
 ```
@@ -64,7 +66,7 @@ for protein HMMER - coming soon...
 
 #### workflow / directory pointers                        
 
-option `-f` specifies whether a single alignment table, or multiple tables are used. In the latter, only path to the folder needs be specified. (MANDATORY, NO DEFAULT)
+option `-f` specifies whether a single alignment table, or multiple tables are used. In the latter, only the path to the folder needs be specified. (MANDATORY, NO DEFAULT)
 
 option `-b` specifies the path to alignment table file or a folder with such tables. When multiple tables are used, match between the table and the assembly is done based on cutting out `.blast` extension from the table and using the resulting name to search for the assembly file. (MANDATORY, NO DEFAULT)
 
