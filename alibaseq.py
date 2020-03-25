@@ -918,10 +918,31 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
         messagefunc(dash, cols, debugfile)
         messagefunc("query processor on query "+querykey, cols, debugfile)
         if len(queryval) > 1:
-            messagefunc("rank targets", cols, debugfile)
-            targetlist = rank_targets(queryval, metric, metricR) # step 3
-            messagefunc("running contig stitcher...", cols, debugfile)
-            stitched_targets = contig_stitcher(targetlist, metric, metricR, metricC, contig_overlap, interstitch, cols, debugfile) # step 4
+            if contignum == 0 and interstitch == False:
+                messagefunc("no ranking (extract all and no contig stitching)", cols, debugfile)
+                targetlist = []
+                for targetkey, targetval in queryval.items():
+                    targetlist.append([targetkey, targetval])
+                stitched_targets = []
+                ctg_counter = 0
+                for contig1 in targetlist:
+                    supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
+                    stitched_targets.append([ctg_counter, [[True], supercontig_scores, contig1[1][2][2:4], [contig1]]])
+                    ctg_counter += 1
+            else:
+                messagefunc("rank targets", cols, debugfile)
+                targetlist = rank_targets(queryval, metric, metricR) # step 3
+                if interstitch:
+                    messagefunc("running contig stitcher...", cols, debugfile)
+                    stitched_targets = contig_stitcher(targetlist, metric, metricR, metricC, contig_overlap, cols, debugfile) # step 4
+                else:
+                    messagefunc("stitching disabled", cols, debugfile)
+                    stitched_targets = []
+                    ctg_counter = 0
+                    for contig1 in targetlist:
+                        supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
+                        stitched_targets.append([ctg_counter, [[True], supercontig_scores, contig1[1][2][2:4], [contig1]]])
+                        ctg_counter += 1
         else:
             messagefunc("only one target, no ranking and stitching", cols, debugfile)
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
@@ -1112,7 +1133,7 @@ def rank_targets(inpdict, metric, metricR):
     # [target, [ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]]
 
 #function to check if contigs are overlapping and call functions to merge contigs, their scores, and rank supercontigs after operation is completed
-def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstitch, cols, debugfile):
+def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, debugfile):
     ctg_counter = 0
     returndict = {}
     returnlist = []
@@ -1122,33 +1143,27 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstit
         supercontig_scores = []
         for contig1 in inplist:
             if contig1 not in removed_contigs:
-                if interstitch:
-                    if len(current_list) == 0:
-                        current_list.append(contig1)
-                        removed_contigs.append(contig1) #record processed target
-                        supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
-                    else:
-                        cond = True
-                        for contig2 in current_list:
-                            #check names and directions - do not allow same contig be used in multiple directions:
-                            if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
-                                if contig1[1][0][0] != contig2[1][0][0]:
-                                    cond = False
-                                    break
-                            stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
-                            if stitcher_overlap > contig_overlap:
-                                cond = False
-                                break
-                        if cond:
-                            current_list.append(contig1)
-                            removed_contigs.append(contig1)
-                            supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
-                else:
-                    messagefunc("overlapping disabled", cols, debugfile)
+                if len(current_list) == 0:
                     current_list.append(contig1)
                     removed_contigs.append(contig1) #record processed target
                     supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
-                    break
+                else:
+                    cond = True
+                    for contig2 in current_list:
+                        #check names and directions - do not allow same contig be used in multiple directions:
+                        if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
+                            if contig1[1][0][0] != contig2[1][0][0]:
+                                cond = False
+                                break
+                        stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
+                        if stitcher_overlap > contig_overlap:
+                            cond = False
+                            break
+                    if cond:
+                        current_list.append(contig1)
+                        removed_contigs.append(contig1)
+                        supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
+
         if len(current_list) > 1:
             supercontig_Qranges, supercontig_contigs = join_contigs(current_list)
             returndict[ctg_counter] = [[True], supercontig_scores, supercontig_Qranges, supercontig_contigs]
@@ -1157,10 +1172,9 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstit
             returndict[ctg_counter] = [[True], supercontig_scores, current_list[0][1][2][2:4], [current_list[0]]]
             ctg_counter += 1
     returnlist = rank_targets(returndict, metric, metricR)
-    
     return returnlist
 
-    # stitched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+    # stitched_subcontigs = [ctg_counter, [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]]
 
 #function to subset final table and output it in target based format
 def reformat_table(inpdict, cols, debugfile):
