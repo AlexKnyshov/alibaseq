@@ -22,6 +22,7 @@ required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
 optional.add_argument('-q', metavar='query', help='query file(s) to which extracted results are to be appended; if not specified, sequences are extracted into blank files',dest="queryf")
 optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="alibaseq_out")
+optional.add_argument('-s', metavar='logsuffix', help='output log suffix',dest="logsuffix", default="default")
 optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
 optional.add_argument('-i', metavar='N', help='identity cutoff',dest="identity", type=float, default=0.0)
@@ -149,6 +150,7 @@ else:
     recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
+    logsuffix = vars(args)["logsuffix"]
     if vars(args)["metric"] == "e/b-i":
         metric = "e/b-i"
     else:
@@ -1477,7 +1479,7 @@ def estimate_survival(init_queries, init_targets, survived_queries, survived_tar
 
 #---------------------------------------------------------------------#
 ############################ main script ##############################
-debugfile_generic = open("alibaseq.log", "w")
+debugfile_generic = open("alibaseq_"+logsuffix+".log", "w")
 
 #get terminal window size
 if not os.popen('stty size', 'r').read():
@@ -1547,7 +1549,7 @@ for b in blastlist:
     survived_targets = set()
     messagefunc("target table "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
-    debugfile = open(b.split("/")[-1]+"_alibaseq.log", "w")
+    debugfile = open(b.split("/")[-1]+"_"+logsuffix+".log", "w")
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
@@ -1584,8 +1586,8 @@ for b in blastlist:
 
     estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic, debugfile)
 
-    qout = open(b.split("/")[-1]+"_qtable.tab", "w")
-    tout = open(b.split("/")[-1]+"_ttable.tab", "w")
+    qout = open(b.split("/")[-1]+"_"+logsuffix+"_qtable.tab", "w")
+    tout = open(b.split("/")[-1]+"_"+logsuffix+"_ttable.tab", "w")
     bltableout(final_table, qout, "query")
     bltableout(final_target_table,tout, "target")
     qout.close()
