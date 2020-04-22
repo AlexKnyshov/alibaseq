@@ -50,6 +50,7 @@ optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true',
 optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help='use HMMER contig score instead of domain score', default=False)
 optional.add_argument('--amalgamate-hits', dest='amlghitscore', action='store_true', help='combine score for different hits of the same contig', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
+optional.add_argument('--cname', dest='cname', action='store_true', help='append original contig name to output sequence name', default=False)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
@@ -125,6 +126,10 @@ else:
     bitscore = vars(args)["bitscore"]
     identity = vars(args)["identity"]
     contignum = vars(args)["contignum"]
+    if contignum == 1 and outM == "query":
+        cname = vars(args)["cname"]
+    else:
+        cname = True
     local_rec = vars(args)["local_rec"]
     if vars(args)["rec_search"] == None:
         rec_search = None
@@ -1228,7 +1233,7 @@ def getDist(a, b):
         return b1-a0
 
 #function for writing actual sequence to file
-def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lentarget):
+def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget):
     if outM1 == "target":
         fhandle = open(dir1+"/"+tname, "a")
         finalseq = SeqRecord(sequence)
@@ -1236,7 +1241,7 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lenta
     elif outM1 == "query":
         fhandle = open(dir1+"/"+qname, "a")
         finalseq = SeqRecord(sequence)
-        if contignum1 == 1 or seqname == "none":
+        if cname1 == False or seqname == "none":
             finalseq.id = tname
         else:
             finalseq.id = tname+"|"+seqname
@@ -1362,7 +1367,7 @@ def dumper(inplist, extractiontype, trans_out2, ac2):
     return finalseq
 
 #function to control sequence processing
-def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, keep_strand, cols1, debugfile1):
+def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, cname1, append_name1, ac1, keep_strand, cols1, debugfile1):
     c1 = len(final_target_table1)
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
     if outM1 == "query":
@@ -1400,13 +1405,13 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                             break
                                     if extractiontype1 == "n":
                                         if not use_suffix:
-                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, cname1, append_name1)
                                         #else do nothing
                                     else:
                                         if use_suffix:
-                                            seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, cname1, append_name1)
                                         else:
-                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, cname1, append_name1)
                                     target_set[check_name].add(tgt_index_name)
                                 else:
                                     #need to disable contig stitching when n is selected
@@ -1425,7 +1430,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                         s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1, trans_out1, ac1)
                                         messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols1, debugfile1)
                                         print >> debugfile1, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
-                                        seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, contignum1, append_name1)
+                                        seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, cname1, append_name1)
                                         # clean up
                                         for subb in final_table1[qname][sprcontig][1][3]:
                                             if type(subb) is not int:
@@ -1452,17 +1457,21 @@ def indexer_function(base1, index1):
             return "@".join(splitlist[:-1]), splitlist[-1]
 
 #function to estimate how many queries and targets from the original tables survived
-def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile):
+def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic1, debugfile):
     msg = "number of queries with OK results: "+str(len(survived_queries))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     msg = "number of queries without OK results: "+str(len(init_queries - survived_queries))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     print >> debugfile, "empty query list:"
     print >> debugfile, " ".join(list(init_queries - survived_queries))
     msg = "number of passed targets: "+str(len(survived_targets))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     msg = "number of filtered out targets: "+str(len(init_targets - survived_targets))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     # print >> debugfile, "filtered out targets:"
     # print >> debugfile, " ".join(list(init_targets - survived_targets))
 
@@ -1573,7 +1582,7 @@ for b in blastlist:
 
     final_target_table = reformat_table(final_table, cols, debugfile)
 
-    estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile)
+    estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic, debugfile)
 
     qout = open(b.split("/")[-1]+"_qtable.tab", "w")
     tout = open(b.split("/")[-1]+"_ttable.tab", "w")
@@ -1593,7 +1602,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
                 messagefunc("--------scanning the target---------", cols, debugfile)
-                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
+                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, cname, append_name, ac, keep_strand, cols, debugfile)
         else:
             if filefolder == "M":
                 seqname = b[:-6].split("/")[-1]
@@ -1612,7 +1621,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
             messagefunc("--------scanning the target---------", cols, debugfile)
-            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
+            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, cname, append_name, ac, keep_strand, cols, debugfile)
 
     debugfile.close()
 
