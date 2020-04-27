@@ -179,7 +179,7 @@ The following log files are output
 
 ### qtable log format
 Each line of the log corresponds to a bait sequence and its extracted match from the sample assembly. Below is the description, nested constructs are expanded for readability using markdown lists. Direction `True` means the same strand, `False` - an opposite strand. `<contig_name>@<index>` together comprise a "pseudocontig" - a particular instance of an original contig, with its own start/end coordinates and direction. Bait sequence coordinates and direction are synonymous to query coordinates and direction, sample contig fragment coordinates and direction are synonymous to target pseudocontig coordinates and direction. Gap value represents gap between hits of the same contig, as well as between different contigs, as assessed based on query sequence. Negative gap values denote overlap.
-`<bait_name> [`
+* `<bait_name> [`
 	* `[<supercontig_index>, [`
 		* `[True],`
 		* `[<supercontig_evalue>, <supercontig_bitscore>, <supercontig_identity>],`
@@ -204,4 +204,4 @@ Each line of the log corresponds to a bait sequence and its extracted match from
 		* `]`
 	* `]],`
 	* `[... another supercontig]`
-`]`
+* `]`
