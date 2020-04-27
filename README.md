@@ -1,6 +1,7 @@
 # ALiBaSeq
 Alignment-Based Sequence extraction
-![alibaseqlogo.png](alibaseqlogo.png)
+![https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true](https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true)
+
 
 ## Description
 The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST or HMMER search tab-delimited output tables and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
@@ -16,6 +17,7 @@ The following assumptions were used when developing the script:
 	- bait pool can contain paralogs or otherwise similar sequences; each target by default is checked to match only one bait, and pairing is done based on forward search similarity score and optionally reciprocal best hit score; multiple targets may be paired with the same bait, but each target may only correspond to one bait (the check can be disabled).
 	- paralogs can be located on the same contig in the assembly (since both contig name and coordinates are utilized to assign targets to queries, 'unused' regions of contigs can contribute to other loci)
 	- nested genes can be extracted without disabling assembly contig 'usage check' if they share same general contig region but actual matching sequence regions are different (e.g., introns in one gene contain exons of another); alternatively a check for a given contig region to be used only once can be disabled, with all the consequences; both procedures require adjusting --lr option.
+
 
 
 ## Dependencies
