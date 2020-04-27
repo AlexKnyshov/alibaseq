@@ -227,15 +227,23 @@ It can be used on transcriptomic, low coverage or well-assembled genomic data or
 
 *If I want to recover a set of pre-determined loci from newly sequences transcriptomes what default parameters would I use? What parameters might I adjust to get better recovery?*
 
+Answer
+
 *If I want to recover a set of pre-determined loci from newly sequenced low coverage genome data what default parameters would I use? What parameters might I adjust to get better recovery?*
+
+Answer
 
 *If I want to recover a set of pre-determined loci from newly sequenced target capture data what default parameters would I use? What parameters might I adjust to get better recovery?*
 
-*Why is this program using Python 2....you are a noob!*
+Answer
 
 *What is the best way to assess different parameters I've used to determine which ones work the best in terms of low false positive rates and maximum recovery?*
 
+Answer
+
 *I work on a non-model organism and I have a a very low coverage genome but I want to include it in a phylogenetic analysis with some well relatively well sequenced trancriptomes from the same kind or organism without any annotations. What is the best way to test out the program to see if it works for me?*
+
+Answer
 
 *Aren't UCEs and AHE loci very different? Why didn't you evaluate AHE loci?* 
 
