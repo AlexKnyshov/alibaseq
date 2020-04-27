@@ -113,9 +113,9 @@ Each line of the log corresponds to a bait sequence and its extracted match from
 	* `[... another supercontig]`
 * `]`
 
-### Other features and parameter description
+## Other features and parameter description
 
-#### workflow / directory pointers                        
+### workflow / directory pointers                        
 
 option `-f` specifies whether a single alignment table, or multiple tables are used. In the latter, only the path to the folder needs be specified. (MANDATORY, NO DEFAULT)
 
@@ -131,7 +131,7 @@ option `-r` specifies path to the reciprocal search output table file or the fol
 
 option `-R` specifies path to the query search against the reference assembly. (default: None)
 
-#### table type
+### table type
 
 option `--bt` specifies the alignment table type (only for forward searches; reciprocal and reference tables are always parsed as `blast`). `blast` is a standard blast table, `hmmer22` is a --domtblout table of hmmer, `hmmer18` is a protein --tblout table of hmmer, `hmmer15` is a dna --tblout table of hmmer. (default: blast)
 
@@ -141,7 +141,7 @@ option `--acr` specifies the alignment table type for reciprocal search table (s
 
 option `--acR` specifies the alignment table type for the reference table (supplied with `-R`), see `--ac` for details. (default: dna-dna)
 
-#### extraction parameters
+### extraction parameters
 
 option `-x` specifies the extraction type: `n` extracts the whole contig, `s` extracts only single best hit, `a` extracts all hit regions and joins them together, `b`extracts region between two outmost hit regions. (MANDATORY, NO DEFAULT)
 
@@ -157,7 +157,7 @@ option `--om` specifies the way sequences are output. When set to `query`, seque
 
 option `--keep-strand` turns off sequence reversal according to the query and outputs sequence in original direction (only has effect in combination with `-x n`). (default: False)
 
-#### scoring
+### scoring
 
 option `-e` specifies the evalue cutoff. Nothing will be considered above this cutoff as it filters out initial alignment table parsing. (default: 0.01)
 
@@ -171,7 +171,7 @@ option `--rescale-metric` rescales the metric value by the length of the match (
 
 option `--hmmer-global` - for hmmer22 tables only - uses contig scores instead of domain (hit) scores; do not use in combination with `--amalgamate-hits` (default: False)
 
-#### hit stitcher
+### hit stitcher
 
 option `--hit-ovlp` specifies max allowed hit overlap on query, in bp. If two hits overlap more than this amount, and overlap on target is greater than 0, the hits are considered to be indeed overlapping. (default: 5)
 
@@ -187,7 +187,7 @@ option `--ref-hs` turns on hit sticher on the reciprocal table (slow). Typically
 
 option `--max-gap` (if greater than 0) specifies the maximum distance between hits of a contig, if greater hits are split into alternative versions of the same target contig; setting to 0 turns off (default: 0)
 
-#### contig stitcher
+### contig stitcher
 
 option `--is` turns on contig stiching. (default: False)
 
@@ -195,7 +195,7 @@ option `--ctg-ovlp` specifies max allowed contig overlap on query, in bp. If two
 
 ![contig.png](contig.png)
 
-#### homology checks
+### homology checks
 
 option `--lr` specifies local single best match check (prevents same part of the target contig being extracted to multiple queries). When set to `range`, each region of the target contig (after joining multiple hits) is allowed to be matched to only one query. When set to `actual`, individual hits are checked for the same condition prior to being joined together. Can be switched off by setting `none`. (default: range)
 
