@@ -2,7 +2,7 @@
 # ALiBaSeq
 Alignment-Based Sequence extraction
 
-![logiilustrator.png](logiilustrator.png)
+![https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true](logiilustrator.png)
 
 ## Dependencies
 Python 2.7, Biopython
