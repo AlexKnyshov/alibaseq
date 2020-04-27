@@ -2,6 +2,15 @@
 Alignment-Based Sequence extraction
 ![https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true](https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true)
 
+### Table of Contents
+* [Description](https://github.com/AlexKnyshov/alibaseq#description)  
+* [Dependencies](https://github.com/AlexKnyshov/alibaseq#dependencies)  
+* [Installation](https://github.com/AlexKnyshov/alibaseq#installation)  
+* [Workflow](https://github.com/AlexKnyshov/alibaseq#workflow)  
+* [Other features and parameter description](https://github.com/AlexKnyshov/alibaseq#other-features-and-parameter-description)  
+* [Log file description](https://github.com/AlexKnyshov/alibaseq#log-file-description)  
+* [FAQ](https://github.com/AlexKnyshov/alibaseq#faq)  
+
 
 ## Description
 The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST or HMMER search tab-delimited output tables and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
@@ -207,3 +216,32 @@ Each line of the log corresponds to a bait sequence and its extracted match from
 	* `]],`
 	* `[... another supercontig]`
 * `]`
+
+## FAQ
+
+*What kinds of datasets are suitable for AliBaSeq?*
+
+Any kind of genetic datasets in which you want to analyse a subset of loci for a phylogeny. The subset may include predetermined single copy orthologous genes (BUSCO or OrthoDB), predetermined genes for which probes are supposed to enrich loci (targeted capture, UCE or AHE approaches) or even other datasets in which you want to recover a set of known genes for new taxa for further analysis (e.g., like salivary proteins?). 
+
+It can be used on transcriptomic, low coverage or well-assembled genomic data or sequence capture assemblies. It is especially useful for combining these different types of data for a comprehensive phylogenetic analysis. It is also particularly robust for recovering genes across large phylogenetic distances unlike many other programs.
+
+*If I want to recover a set of pre-determined loci from newly sequences transcriptomes what default parameters would I use? What parameters might I adjust to get better recovery?*
+
+*If I want to recover a set of pre-determined loci from newly sequenced low coverage genome data what default parameters would I use? What parameters might I adjust to get better recovery?*
+
+*If I want to recover a set of pre-determined loci from newly sequenced target capture data what default parameters would I use? What parameters might I adjust to get better recovery?*
+
+*Why is this program using Python 2....you are a noob!*
+
+*What is the best way to assess different parameters I've used to determine which ones work the best in terms of low false positive rates and maximum recovery?*
+
+*I work on a non-model organism and I have a a very low coverage genome but I want to include it in a phylogenetic analysis with some well relatively well sequenced trancriptomes from the same kind or organism without any annotations. What is the best way to test out the program to see if it works for me?*
+
+*Aren't UCEs and AHE loci very different? Why didn't you evaluate AHE loci?* 
+
+In vertebrates, UCEs appear to be a unique sequence element that doesn't code for proteins. In invertebrates, the most highly conserved sequences are almost entirely exonic and are part of a protein coding sequence. 
+
+*Will this program work for pulling out vertebrate UCEs?* 
+
+Yes!.... but probably almost all alternatives will work well too. One advantage of this program could be xxx? 
+
