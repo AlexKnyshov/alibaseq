@@ -22,6 +22,7 @@ required.add_argument('-x', choices=['n','s','a','b'], help='extraction type: n 
 optional.add_argument('-t', metavar='assembly', help='assembly file',dest="targetf")
 optional.add_argument('-q', metavar='query', help='query file(s) to which extracted results are to be appended; if not specified, sequences are extracted into blank files',dest="queryf")
 optional.add_argument('-o', metavar='output', help='output folder for modified files with extracted sequences',dest="output", default="alibaseq_out")
+optional.add_argument('-s', metavar='logsuffix', help='output log suffix',dest="logsuffix", default="default")
 optional.add_argument('--om', choices=['query','target', 'combined'], help='output mode: group in files per query [query], per target [target], or combine in a single file [combined]',dest="outM", default="query")
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
 optional.add_argument('-i', metavar='N', help='identity cutoff',dest="identity", type=float, default=0.0)
@@ -50,6 +51,7 @@ optional.add_argument('--rm-rec-not-found', dest='rmrecnf', action='store_true',
 optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help='use HMMER contig score instead of domain score', default=False)
 optional.add_argument('--amalgamate-hits', dest='amlghitscore', action='store_true', help='combine score for different hits of the same contig', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
+optional.add_argument('--cname', dest='cname', action='store_true', help='append original contig name to output sequence name', default=False)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
@@ -125,6 +127,10 @@ else:
     bitscore = vars(args)["bitscore"]
     identity = vars(args)["identity"]
     contignum = vars(args)["contignum"]
+    if contignum == 1 and outM == "query":
+        cname = vars(args)["cname"]
+    else:
+        cname = True
     local_rec = vars(args)["local_rec"]
     if vars(args)["rec_search"] == None:
         rec_search = None
@@ -144,6 +150,7 @@ else:
     recip_ovlp = vars(args)["recip_ovlp"]
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
+    logsuffix = vars(args)["logsuffix"]
     if vars(args)["metric"] == "e/b-i":
         metric = "e/b-i"
     else:
@@ -918,10 +925,31 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
         messagefunc(dash, cols, debugfile)
         messagefunc("query processor on query "+querykey, cols, debugfile)
         if len(queryval) > 1:
-            messagefunc("rank targets", cols, debugfile)
-            targetlist = rank_targets(queryval, metric, metricR) # step 3
-            messagefunc("running contig stitcher...", cols, debugfile)
-            stitched_targets = contig_stitcher(targetlist, metric, metricR, metricC, contig_overlap, interstitch, cols, debugfile) # step 4
+            if contignum == 0 and interstitch == False:
+                messagefunc("no ranking (extract all and no contig stitching)", cols, debugfile)
+                targetlist = []
+                for targetkey, targetval in queryval.items():
+                    targetlist.append([targetkey, targetval])
+                stitched_targets = []
+                ctg_counter = 0
+                for contig1 in targetlist:
+                    supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
+                    stitched_targets.append([ctg_counter, [[True], supercontig_scores, contig1[1][2][2:4], [contig1]]])
+                    ctg_counter += 1
+            else:
+                messagefunc("rank targets", cols, debugfile)
+                targetlist = rank_targets(queryval, metric, metricR) # step 3
+                if interstitch:
+                    messagefunc("running contig stitcher...", cols, debugfile)
+                    stitched_targets = contig_stitcher(targetlist, metric, metricR, metricC, contig_overlap, cols, debugfile) # step 4
+                else:
+                    messagefunc("stitching disabled", cols, debugfile)
+                    stitched_targets = []
+                    ctg_counter = 0
+                    for contig1 in targetlist:
+                        supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
+                        stitched_targets.append([ctg_counter, [[True], supercontig_scores, contig1[1][2][2:4], [contig1]]])
+                        ctg_counter += 1
         else:
             messagefunc("only one target, no ranking and stitching", cols, debugfile)
             reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
@@ -1112,7 +1140,7 @@ def rank_targets(inpdict, metric, metricR):
     # [target, [ 0[direction], 1[0eval, 1bit, 2ident], 2[ranges], 3[[hit range and score], gap, etc]]]
 
 #function to check if contigs are overlapping and call functions to merge contigs, their scores, and rank supercontigs after operation is completed
-def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstitch, cols, debugfile):
+def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, debugfile):
     ctg_counter = 0
     returndict = {}
     returnlist = []
@@ -1122,33 +1150,27 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstit
         supercontig_scores = []
         for contig1 in inplist:
             if contig1 not in removed_contigs:
-                if interstitch:
-                    if len(current_list) == 0:
-                        current_list.append(contig1)
-                        removed_contigs.append(contig1) #record processed target
-                        supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
-                    else:
-                        cond = True
-                        for contig2 in current_list:
-                            #check names and directions - do not allow same contig be used in multiple directions:
-                            if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
-                                if contig1[1][0][0] != contig2[1][0][0]:
-                                    cond = False
-                                    break
-                            stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
-                            if stitcher_overlap > contig_overlap:
-                                cond = False
-                                break
-                        if cond:
-                            current_list.append(contig1)
-                            removed_contigs.append(contig1)
-                            supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
-                else:
-                    messagefunc("overlapping disabled", cols, debugfile)
+                if len(current_list) == 0:
                     current_list.append(contig1)
                     removed_contigs.append(contig1) #record processed target
                     supercontig_scores = [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]]
-                    break
+                else:
+                    cond = True
+                    for contig2 in current_list:
+                        #check names and directions - do not allow same contig be used in multiple directions:
+                        if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
+                            if contig1[1][0][0] != contig2[1][0][0]:
+                                cond = False
+                                break
+                        stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
+                        if stitcher_overlap > contig_overlap:
+                            cond = False
+                            break
+                    if cond:
+                        current_list.append(contig1)
+                        removed_contigs.append(contig1)
+                        supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
+
         if len(current_list) > 1:
             supercontig_Qranges, supercontig_contigs = join_contigs(current_list)
             returndict[ctg_counter] = [[True], supercontig_scores, supercontig_Qranges, supercontig_contigs]
@@ -1157,10 +1179,9 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, interstit
             returndict[ctg_counter] = [[True], supercontig_scores, current_list[0][1][2][2:4], [current_list[0]]]
             ctg_counter += 1
     returnlist = rank_targets(returndict, metric, metricR)
-    
     return returnlist
 
-    # stitched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
+    # stitched_subcontigs = [ctg_counter, [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]]
 
 #function to subset final table and output it in target based format
 def reformat_table(inpdict, cols, debugfile):
@@ -1214,7 +1235,7 @@ def getDist(a, b):
         return b1-a0
 
 #function for writing actual sequence to file
-def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lentarget):
+def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget):
     if outM1 == "target":
         fhandle = open(dir1+"/"+tname, "a")
         finalseq = SeqRecord(sequence)
@@ -1222,7 +1243,7 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, contignum1, lenta
     elif outM1 == "query":
         fhandle = open(dir1+"/"+qname, "a")
         finalseq = SeqRecord(sequence)
-        if contignum1 == 1 or seqname == "none":
+        if cname1 == False or seqname == "none":
             finalseq.id = tname
         else:
             finalseq.id = tname+"|"+seqname
@@ -1348,7 +1369,7 @@ def dumper(inplist, extractiontype, trans_out2, ac2):
     return finalseq
 
 #function to control sequence processing
-def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, contignum1, append_name1, ac1, keep_strand, cols1, debugfile1):
+def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, extractiontype1, flanks1, trans_out1, outM1, output_dir1, cname1, append_name1, ac1, keep_strand, cols1, debugfile1):
     c1 = len(final_target_table1)
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs: "+str(c1), cols1, debugfile1, False)
     if outM1 == "query":
@@ -1386,13 +1407,13 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                             break
                                     if extractiontype1 == "n":
                                         if not use_suffix:
-                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, cname1, append_name1)
                                         #else do nothing
                                     else:
                                         if use_suffix:
-                                            seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, indexer_function(targetname, str(seq_suffix_c)), outM1, output_dir1, cname1, append_name1)
                                         else:
-                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, contignum1, append_name1)
+                                            seqwritefunc(s1, qname, target_db_name1, targetname, outM1, output_dir1, cname1, append_name1)
                                     target_set[check_name].add(tgt_index_name)
                                 else:
                                     #need to disable contig stitching when n is selected
@@ -1411,7 +1432,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                         s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1, trans_out1, ac1)
                                         messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols1, debugfile1)
                                         print >> debugfile1, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
-                                        seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, contignum1, append_name1)
+                                        seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, cname1, append_name1)
                                         # clean up
                                         for subb in final_table1[qname][sprcontig][1][3]:
                                             if type(subb) is not int:
@@ -1438,23 +1459,27 @@ def indexer_function(base1, index1):
             return "@".join(splitlist[:-1]), splitlist[-1]
 
 #function to estimate how many queries and targets from the original tables survived
-def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile):
+def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic1, debugfile):
     msg = "number of queries with OK results: "+str(len(survived_queries))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     msg = "number of queries without OK results: "+str(len(init_queries - survived_queries))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     print >> debugfile, "empty query list:"
     print >> debugfile, " ".join(list(init_queries - survived_queries))
     msg = "number of passed targets: "+str(len(survived_targets))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     msg = "number of filtered out targets: "+str(len(init_targets - survived_targets))
     messagefunc(msg, cols, debugfile, False)
+    messagefunc(msg, cols, debugfile_generic1, False)
     # print >> debugfile, "filtered out targets:"
     # print >> debugfile, " ".join(list(init_targets - survived_targets))
 
 #---------------------------------------------------------------------#
 ############################ main script ##############################
-debugfile_generic = open("alibaseq.log", "w")
+debugfile_generic = open("alibaseq_"+logsuffix+".log", "w")
 
 #get terminal window size
 if not os.popen('stty size', 'r').read():
@@ -1524,7 +1549,7 @@ for b in blastlist:
     survived_targets = set()
     messagefunc("target table "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
-    debugfile = open(b.split("/")[-1]+"_alibaseq.log", "w")
+    debugfile = open(b.split("/")[-1]+"_"+logsuffix+".log", "w")
     messagefunc("target log started: "+b, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
@@ -1559,10 +1584,10 @@ for b in blastlist:
 
     final_target_table = reformat_table(final_table, cols, debugfile)
 
-    estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile)
+    estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic, debugfile)
 
-    qout = open(b.split("/")[-1]+"_qtable.tab", "w")
-    tout = open(b.split("/")[-1]+"_ttable.tab", "w")
+    qout = open(b.split("/")[-1]+"_"+logsuffix+"_qtable.tab", "w")
+    tout = open(b.split("/")[-1]+"_"+logsuffix+"_ttable.tab", "w")
     bltableout(final_table, qout, "query")
     bltableout(final_target_table,tout, "target")
     qout.close()
@@ -1579,7 +1604,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
                 messagefunc("--------scanning the target---------", cols, debugfile)
-                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
+                process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, cname, append_name, ac, keep_strand, cols, debugfile)
         else:
             if filefolder == "M":
                 seqname = b[:-6].split("/")[-1]
@@ -1598,7 +1623,7 @@ for b in blastlist:
                 inputf = SeqIO.parse(seqname, "fasta")
                 target_db_name = seqname.split("/")[-1]
             messagefunc("--------scanning the target---------", cols, debugfile)
-            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, contignum, append_name, ac, keep_strand, cols, debugfile)
+            process_fasta(target_db_name, inputf, final_table, final_target_table, extractiontype, flanks, trans_out,outM,output_dir, cname, append_name, ac, keep_strand, cols, debugfile)
 
     debugfile.close()
 
