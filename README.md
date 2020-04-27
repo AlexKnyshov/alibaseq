@@ -2,6 +2,22 @@
 Alignment-Based Sequence extraction
 ![alibaseqlogo.png](alibaseqlogo.png)
 
+## Description
+The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST or HMMER search tab-delimited output tables and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
+The following are assumptions used in developing of the script:
+* Technical
+	- input (forward) search table has locus name or locus file name with extension in the query column and contig name in the target column
+	- **in case of multiple samples processed at once**, input forward and reference search tables located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST and `.hmmer` for HMMER. Reciprocal search tables have suffix `_reciprocal.blast` appended to forward search table name. Assemblies have extension `.fasta`. See examples below.
+	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with .fas extension
+* Methodological
+	- bait sequences can correspond to multiple hit regions in a given contig (a case of missing data or variable region in the bait, or intron presence in the target)
+	- bait sequences can correspond to multiple contigs in the assembly (a case of low-coverage assembly with broken up gene sequences)
+	- no sequence fragment order rearrangements are assumed (in case of multiple hits or multiple contigs they are arranged as in bait)
+	- bait pool can contain paralogs or otherwise similar sequences; each target by default is checked to match only one bait, and pairing is done based on forward search similarity score and optionally reciprocal best hit score; multiple targets may be paired with the same bait, but each target may only correspond to one bait (the check can be disabled).
+	- paralogs can be located on the same contig in the assembly (since both contig name and coordinates are utilized to assign targets to queries, 'unused' regions of contigs can contribute to other loci)
+	- nested genes can be extracted without disabling assembly contig 'usage check' if they share same general contig region but actual matching sequence regions are different (e.g., introns in one gene contain exons of another); alternatively a check for a given contig region to be used only once can be disabled, with all the consequences; both procedures require adjusting --lr option.
+
+
 ## Dependencies
 Python 2.7, Biopython
 
@@ -59,6 +75,43 @@ For a nucleotide HMMER search, the extraction can be done as follows:
 python alibaseq.py -x b -f M -b ./hmmer_results/ -c 1 -e 1e-05 --is -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast --bt hmmer15
 ```
 for protein HMMER - coming soon...
+
+## Log file description
+
+The following log files are output
+* `alibaseq_<suffix>.log` contains generic information about the parameters used to run the script, reference sample processed (if any), and summary data on each sample processed.
+* `<sample name>_<logsuffix>.log` contains information about processing an individual sample
+* `<sample name>_<logsuffix>_qtable.tab` contains per-query (bait) information about an individual sample. The format is described in the subsection below.
+* `<sample name>_<logsuffix>_ttable.tab` is a comma-delimited file, contains per-target (contig) information about an individual sample. Each line corresponds to the contig used in the first column, number of baits it contributed to in the second column, and bait names in the subsequent columns
+
+### qtable log format
+Each line of the log corresponds to a bait sequence and its extracted match from the sample assembly. Below is the description, nested constructs are expanded for readability using markdown lists. Direction `True` means the same strand, `False` - an opposite strand. `<contig_name>@<index>` together comprise a pseudocontig - a particular instance of an original contig, with its own start/end coordinates and direction. Bait sequence coordinates and direction are synonymous to query coordinates and direction, sample contig fragment coordinates and direction are synonymous to target pseudocontig coordinates and direction. Gap value represents gap between hits of the same contig, as well as between different contigs, as assessed based on query sequence. Negative gap values denote overlap.
+* `<bait_name> [`
+	* `[<supercontig_index>, [`
+		* `[True],`
+		* `[<supercontig_evalue>, <supercontig_evalue>, <supercontig_identity>],`
+		* `[<supercontig_start_on_query>,<supercontig_end_on_query>], [`
+			* `[<contig_name>@<index>, [`
+				* `[<pseudocontig_direction>], `
+				* `[<pseudocontig_evalue>, <pseudocontig_bitscore>, <pseudocontig_identity>], `
+				* `[<pseudocontig_start_on_target_contig>, <pseudocontig_end_on_target_contig>, 
+				<pseudocontig_start_on_query_sequence>, <pseudocontig_start_on_query_sequence>], [`
+					* `[<hit_start_on_target>, <hit_end_on_target>, 
+					<hit_start_on_query>, <hit_end_on_query>, 
+					<hit_evalue>, <hit_bitscore>, <hit_identity>], `
+					* `<gap>,` 
+					* `<hit_evalue>, <hit_bitscore>, <hit_identity>], `
+					* `<gap>,`
+					* `...`
+					* `<hit_evalue>, <hit_bitscore>, <hit_identity>]`
+				* `]`
+			* `]],`
+			* `<gap>,`
+			* `[... another pseudocontig] `
+		* `]`
+	* `]],`
+	* `[... another supercontig]`
+* `]`
 
 ### Other features and parameter description
 
