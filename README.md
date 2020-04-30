@@ -3,6 +3,7 @@ Alignment-Based Sequence extraction
 ![https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true](https://github.com/erg55/alibaseq/blob/master/logiillustrator.png?raw=true)
 
 ### Table of Contents
+* [References](https://github.com/AlexKnyshov/alibaseq#references)  
 * [Description](https://github.com/AlexKnyshov/alibaseq#description)  
 * [Dependencies](https://github.com/AlexKnyshov/alibaseq#dependencies)  
 * [Installation](https://github.com/AlexKnyshov/alibaseq#installation)  
