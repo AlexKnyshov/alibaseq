@@ -47,51 +47,104 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 ## Workflow
 ### Basic extraction
 Requirements:
-- bait sequences in files, one file per locus (can contain multiple sequences)
-- target files (typically, assembled contigs) in fasta format
-- list of file names of target files (in case there is more than one target)
+- bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences)
+- target files (typically, assembled contigs) in fasta format, a single file, or multiple files in the same folder
+- search programs (BLAST or HMMER) are in the path
+- for BLAST searches, a database with the same name as the target file was created in the same folder
 
-#### Search
-Seach using tblastx:
+#### Create BLAST database (for BLAST searches, if not previously done)
+For a single sample processing can be created like this (for a nucleotide target)
 ```
-bash blast_wrapper.sh ./query_folder/ ./assembly_folder/ 1e-05 tblastx 4 n ./list_of_files_to_seach_against.txt
+makeblastdb -in assembly.fasta -dbtype nucl -parse_seqids
 ```
-After search is complete, the output (.blast) files can be placed in a separate folder
+For a group of files, located in the same folder, the dbs can be created like this
 ```
+for f in folder_with_assemblies/*.fasta; do makeblastdb -in $f -dbtype nucl -parse_seqids; done
+```
+
+#### Search (if not previously done)
+If baits are all in one file, the search can simply be done like this (**an example with tblastx, adjust the number of threads and search thresholds accordingly**):
+
+A single sample example:
+```
+tblastx -query baits.fas -db assembly.fasta -outfmt 6 -out assembly.fasta.blast -evalue 1e-03 -num_threads 32
+```
+A multiple sample example (results are placed into blast_results folder):
+```
+mkdir blast_results
+for f in folder_with_assemblies/*.fasta; do tblastx -query baits.fas -db $f -outfmt 6 -out $f".blast" -evalue 1e-03 -num_threads 32; mv "folder_with_assemblies/"$f".blast" ./blast_results/; done
+```
+
+If baits are separate collections of FASTA sequences (e.g., locus alignments), located in the query_folder, the search can be done with the following helper script, taking the first sequence from each file:
+
+A single sample example:
+```
+bash blast_wrapper.sh ./query_folder/ assembly.fasta 1e-03 tblastx 32 n
+```
+A multiple sample example (first a list of target files needs to be created):
+```
+ls folder_with_assemblies/*.fasta | rev | cut -f1 -d/ | rev > list_of_files_to_seach_against.txt
+bash blast_wrapper.sh ./query_folder/ ./folder_with_assemblies/ 1e-03 tblastx 32 n ./list_of_files_to_seach_against.txt
 mkdir blast_results
 mv *.blast blast_results
 ```
-#### Sequence extraction
 
-Single sample extraction can be done like this:
-```
-python alibaseq.py -x b -f S -b ./blast_results/sample.fasta.blast -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/sample.fasta
-```
-
-Basic extraction from multiple samples can be done like this:
-```
-python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/
-```
-
-### Reciprocal search
-
-In case a reciprocal check is needed, the search on multiple samples can be done as follows:
-```
-bash reciprocal_search.sh ./blast_results/ ./assembly_folder/ ./Reference_assembly.fas tblastx 4 n ./reciprocal_get_contigs.py ./list_of_files_to_seach_against.txt
-```
-The results are stored in \_reciprocal.blast
-In order to assess the best matches of queries to the reference assembly, it also needs to be searched against (see Search section)
-
-Sequence extraction with consideration of reciprocal best hit can be done as follows:
-```
-python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast
-```
 ### Hmmer usage
 For a nucleotide HMMER search, the extraction can be done as follows:
 ```
 python alibaseq.py -x b -f M -b ./hmmer_results/ -c 1 -e 1e-05 --is -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast --bt hmmer15
 ```
 for protein HMMER - coming soon...
+
+
+### Reciprocal search (optional)
+
+In case a reciprocal check is needed, the target assembly needs to be searched against the reference assembly (or proteome). Since it takes longer, and additionally, as opposed to OrthoMCL type orthology prediction, here only the contigs that had minimal hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. This can be done as follows:
+
+A single sample example:
+```
+bash reciprocal_search.sh ./assembly.fasta.blast ./assembly.fasta ./Reference_assembly.fas tblastx 32 n ./reciprocal_get_contigs.py
+```
+A multiple sample example:
+```
+bash reciprocal_search.sh ./blast_results/ ./folder_with_assemblies/ ./Reference_assembly.fas tblastx 32 n ./reciprocal_get_contigs.py ./list_of_files_to_seach_against.txt
+```
+The results are stored in \_reciprocal.blast files, which can be located in the same or different folder.
+In order to assess the best matches of queries to the reference assembly, it also needs to be searched against (see Search section). If baits are different enough from each other and derived from the reference taxon or a closely related taxon, the search score should unequivocally point to the correct contig region in the reference assembly.
+
+Currently only BLAST files are supported. We plan to add other formats as well as have a BED reference taxon file support for a more explicit bait contig and region encoding.
+
+#### ALiBaSeq script running
+
+##### Only search results processing
+
+A single sample example:
+```
+python alibaseq.py -x b -f S -b ./blast_results/sample.fasta.blast -c 1 -e 1e-05 --is --ac tdna-tdna
+```
+A multiple sample example:
+```
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna
+```
+##### Extract sequences (multiple sample examples)
+
+Basic extraction from multiple samples can be done like this:
+```
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./folder_with_assemblies/
+```
+Sequence extraction with consideration of reciprocal best hit can be done as follows:
+```
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast
+```
+Extract all possible sequences found per bait (e.g., for retrieving paralogs):
+```
+python alibaseq.py -x b -f M -b ./blast_results/ -c 0 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast
+```
+Extract sequences by appending them to existing sequences (i.e., the query folder that was used to do the search):
+```
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast -q ./query_folder/
+```
+
 
 ## Other features and parameter description
 
