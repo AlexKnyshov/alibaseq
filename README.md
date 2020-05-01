@@ -24,14 +24,14 @@ The following assumptions were used when developing the script:
 * Technical
 	- input (forward) search table has locus name or locus file name with extension in the query column and contig name in the target column
 	- **in case of multiple samples processed at once**, input forward and reference search tables located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST and `.hmmer` for HMMER. Reciprocal search tables have suffix `_reciprocal.blast` appended to forward search table name. Assemblies have extension `.fasta`. See examples below.
-	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with .fas extension
+	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with `.fas` extension
 * Methodological
 	- bait sequences can correspond to multiple hit regions in a given contig (a case of missing data or variable region in the bait, or intron presence in the target)
 	- bait sequences can correspond to multiple contigs in the assembly (a case of low-coverage assembly with broken up gene sequences)
 	- no sequence fragment order rearrangements are assumed (in case of multiple hits or multiple contigs they are arranged as in the bait)
 	- bait pool can contain paralogs or otherwise similar sequences; each target by default is checked to match only one bait, and pairing is done based on forward search similarity score and optionally reciprocal best hit score; multiple targets may be paired with the same bait, but each target may only correspond to one bait (the check can be disabled).
 	- paralogs can be located on the same contig in the assembly (since both contig name and coordinates are utilized to assign targets to queries, 'unused' regions of contigs can contribute to other loci)
-	- nested genes can be extracted without disabling assembly contig 'usage check' if they share same general contig region but actual matching sequence regions are different (e.g., introns in one gene contain exons of another); alternatively a check for a given contig region to be used only once can be disabled, with all the consequences; both procedures require adjusting --lr option.
+	- nested genes can be extracted without disabling assembly contig 'usage check' if they share same general contig region but actual matching sequence regions are different (e.g., introns in one gene contain exons of another); alternatively a check for a given contig region to be used only once can be disabled, with all the consequences; both procedures require adjusting `--lr` option.
 
 
 
@@ -46,10 +46,10 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 
 ## Workflow
 
-Requirements:
-- bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences); for multiple files, an extension .fas is assumed for the bait files.
-- target files (typically, assembled contigs) in fasta format, a single file, or multiple files in the same folder
-- search programs (BLAST or HMMER) are in the path
+### Requirements:
+- bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences); for multiple files, an extension `.fas` is assumed for the bait files.
+- target files (typically, assembled contigs) in FASTA format, a single file, or multiple files in the same folder
+- if search to be using the wrapper scripts, the search programs (BLAST or HMMER) are in the path
 - for BLAST searches, a database with the same name as the target file was created in the same folder
 
 ### Create BLAST database (for BLAST searches, if not previously done)
@@ -109,7 +109,7 @@ A multiple sample example:
 ```
 bash reciprocal_search.sh ./blast_results/ ./folder_with_assemblies/ ./Reference_assembly.fas tblastx 32 n ./reciprocal_get_contigs.py ./list_of_files_to_seach_against.txt
 ```
-The results are stored in \_reciprocal.blast files, which can be located in the same or different folder.
+The results are stored in `<blast_file_name>_reciprocal.blast` files, which can be located in the same or different folder.
 In order to assess the best matches of queries to the reference assembly, it also needs to be searched against (see Search section). If baits are different enough from each other and derived from the reference taxon or a closely related taxon, the search score should unequivocally point to the correct contig region in the reference assembly.
 
 Currently only BLAST files are supported. We plan to add other formats as well as have a BED reference taxon file support for a more explicit bait contig and region encoding.
