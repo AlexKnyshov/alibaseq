@@ -47,7 +47,7 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 ## Workflow
 
 Requirements:
-- bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences)
+- bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences); for multiple files, an extension .fas is assumed for the bait files.
 - target files (typically, assembled contigs) in fasta format, a single file, or multiple files in the same folder
 - search programs (BLAST or HMMER) are in the path
 - for BLAST searches, a database with the same name as the target file was created in the same folder
@@ -92,7 +92,7 @@ mv *.blast blast_results
 ### Hmmer usage
 For a nucleotide HMMER search, the extraction can be done as follows:
 ```
-python alibaseq.py -x b -f M -b ./hmmer_results/ -c 1 -e 1e-05 --is -t ./assembly_folder/ -r ./reciprocal_results -R Reference_assembly.fas.blast --bt hmmer15
+python alibaseq.py -x b -f M -b ./hmmer_results/ -c 1 -e 1e-05 --is -t ./folder_with_assemblies/ -r ./reciprocal_results -R Reference_assembly.fas.blast --bt hmmer15
 ```
 for protein HMMER - coming soon...
 
@@ -134,15 +134,15 @@ python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-td
 ```
 Sequence extraction with consideration of reciprocal best hit can be done as follows:
 ```
-python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./folder_with_assemblies/ -r ./blast_results/ -R Reference_assembly.fasta.blast
 ```
 Extract all possible sequences found per bait (e.g., for retrieving paralogs):
 ```
-python alibaseq.py -x b -f M -b ./blast_results/ -c 0 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast
+python alibaseq.py -x b -f M -b ./blast_results/ -c 0 -e 1e-05 --is --ac tdna-tdna -t ./folder_with_assemblies/ -r ./blast_results/ -R Reference_assembly.fasta.blast
 ```
 Extract sequences by appending them to existing sequences (i.e., the query folder that was used to do the search):
 ```
-python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./assembly_folder/ -r ./blast_results/ -R Reference_assembly.fasta.blast -q ./query_folder/
+python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna -t ./folder_with_assemblies/ -r ./blast_results/ -R Reference_assembly.fasta.blast -q ./query_folder/
 ```
 
 
