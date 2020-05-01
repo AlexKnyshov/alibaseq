@@ -45,14 +45,14 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 ```
 
 ## Workflow
-### Basic extraction
+
 Requirements:
 - bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences)
 - target files (typically, assembled contigs) in fasta format, a single file, or multiple files in the same folder
 - search programs (BLAST or HMMER) are in the path
 - for BLAST searches, a database with the same name as the target file was created in the same folder
 
-#### Create BLAST database (for BLAST searches, if not previously done)
+### Create BLAST database (for BLAST searches, if not previously done)
 For a single sample processing can be created like this (for a nucleotide target)
 ```
 makeblastdb -in assembly.fasta -dbtype nucl -parse_seqids
@@ -62,7 +62,7 @@ For a group of files, located in the same folder, the dbs can be created like th
 for f in folder_with_assemblies/*.fasta; do makeblastdb -in $f -dbtype nucl -parse_seqids; done
 ```
 
-#### Search (if not previously done)
+### Search (if not previously done)
 If baits are all in one file, the search can simply be done like this (**an example with tblastx, adjust the number of threads and search thresholds accordingly**):
 
 A single sample example:
@@ -114,9 +114,9 @@ In order to assess the best matches of queries to the reference assembly, it als
 
 Currently only BLAST files are supported. We plan to add other formats as well as have a BED reference taxon file support for a more explicit bait contig and region encoding.
 
-#### ALiBaSeq script running
+### ALiBaSeq script running
 
-##### Only search results processing
+#### Only search results processing
 
 A single sample example:
 ```
@@ -126,7 +126,7 @@ A multiple sample example:
 ```
 python alibaseq.py -x b -f M -b ./blast_results/ -c 1 -e 1e-05 --is --ac tdna-tdna
 ```
-##### Extract sequences (multiple sample examples)
+#### Extract sequences (multiple sample examples)
 
 Basic extraction from multiple samples can be done like this:
 ```
