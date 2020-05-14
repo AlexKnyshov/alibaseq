@@ -206,13 +206,13 @@ option `--hmmer-global` - for hmmer22 tables only - uses contig scores instead o
 
 ### hit stitcher
 
-option `--hit-ovlp` specifies max allowed hit overlap on query, in bp. If two hits overlap more than this amount, and overlap on target is greater than 0, the hits are considered to be indeed overlapping. (default: 5)
+option `--hit-ovlp` specifies max allowed hit overlap on query, 0 or >= 1 in bp, or relative 0 < N < 1. If two hits overlap more than this amount, and overlap on target is greater than 0, the hits are considered to be indeed overlapping. (default: 0.1)
 
 ![hit_stitcher.png](hit_stitcher.png)
 
 option `--amalgamate-hits` - when scoring the contig, use combination of scores of the hits and their average identity (default: False)
 
-option `--metric-merge-corr` - used together with `--amalgamate-hits` to reduce the combined score of multiple hits (default: 0.75)
+option `--metric-merge-corr` - used together with `--amalgamate-hits` to reduce the combined score of multiple hits (default: 1.0)
 
 option `--no-hs` prevents running hit stitcher on the forward search table (default: False)
 
@@ -224,7 +224,7 @@ option `--max-gap` (if greater than 0) specifies the maximum distance between hi
 
 option `--is` turns on contig stiching. (default: False)
 
-option `--ctg-ovlp` specifies max allowed contig overlap on query, in bp. If two contigs overlap more than this amount they are considered to be indeed overlapping. (default: 1)
+option `--ctg-ovlp` specifies max allowed contig overlap on query, 0 or >= 1 in bp, or relative 0 < N < 1. If two contigs overlap more than this amount they are considered to be indeed overlapping. (default: 0.2)
 
 ![contig.png](contig.png)
 
@@ -232,7 +232,9 @@ option `--ctg-ovlp` specifies max allowed contig overlap on query, in bp. If two
 
 option `--lr` specifies local single best match check (prevents same part of the target contig being extracted to multiple queries). When set to `range`, each region of the target contig (after joining multiple hits) is allowed to be matched to only one query. When set to `actual`, individual hits are checked for the same condition prior to being joined together. Can be switched off by setting `none`. (default: range)
 
-option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check (both "local" and "global" checks), in bp. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
+option `--both-strands` treats different strands of the same contig region as potentially separate loci and not be removed by the local homology check. This was the default behavior prior to the introduction of the option. Now by default for each contig region only one best strand is possible. (default: False)
+
+option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check (both "local" and "global" checks), 0 or >= 1 in bp, or relative 0 < N < 1. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
 
 ![recip.png](recip.png)
 
