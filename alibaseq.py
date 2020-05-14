@@ -8,6 +8,7 @@ import shutil
 import csv
 import sys
 import argparse
+import math
 
 parser = argparse.ArgumentParser(description='ALiBaSeq (Alignment-Based Sequence extraction)',formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
@@ -32,9 +33,9 @@ optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest
 optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
 optional.add_argument('--is', dest='interstitch', action='store_true', help='perform contig stitching', default=False)
 optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -x s or -x a)', default=False)
-optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=int, default=5)
-optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=int, default=1)
-optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=int, default=10)
+optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, in bp',dest="hit_ovlp", type=float, default=5)
+optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, in bp',dest="ctg_ovlp", type=float, default=1)
+optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, in bp',dest="recip_ovlp", type=float, default=10)
 optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15'], help='alignment table type',dest="bt", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
 optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reciprocal alignment coordinate type',dest="acr", default="dna-dna")
@@ -52,6 +53,7 @@ optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help
 optional.add_argument('--amalgamate-hits', dest='amlghitscore', action='store_true', help='combine score for different hits of the same contig', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 optional.add_argument('--cname', dest='cname', action='store_true', help='append original contig name to output sequence name', default=False)
+optional.add_argument('--both-strands', dest='bstrands', action='store_true', help='allow both strands of the same contig region to be considered', default=False)
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
@@ -146,8 +148,17 @@ else:
     rmrecnf = vars(args)["rmrecnf"]        
 
     hit_ovlp = vars(args)["hit_ovlp"]
+    if hit_ovlp < 0:
+        print "overlap value must be 0 or positive"
+        sys.exit()
     ctg_ovlp = vars(args)["ctg_ovlp"]
+    if ctg_ovlp < 0:
+        print "overlap value must be 0 or positive"
+        sys.exit()
     recip_ovlp = vars(args)["recip_ovlp"]
+    if recip_ovlp < 0:
+        print "overlap value must be 0 or positive"
+        sys.exit()
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
     logsuffix = vars(args)["logsuffix"]
@@ -160,6 +171,7 @@ else:
     ref_hs = vars(args)["ref_hs"]
     max_gap = vars(args)["max_gap"]
     amlghitscore = vars(args)["amlghitscore"]
+    bstrands = vars(args)["bstrands"]
 
 
 dashb = "#"*75
@@ -382,10 +394,6 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile)
                         if target_f < 0:
                             target_f = 0
                         target_r = ctg_length-int(line[target2])*3-2+frame
-                    # outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[eval1]), float(line[bit1]), 0.0]
-                    # print >> debugfile, outrow
-                    # print >> debugfile, line
-                    # sys.exit()
                 if bt1 == "hmmer22" and hmmerg1:
                     outrow = [target_f, target_r, target_b, query_f, query_r, query_b, float(line[6]), float(line[7]), 0.0]
                 else:
@@ -403,7 +411,7 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile)
     return targetdict
 
 #first main function
-def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC, cols, debugfile):
+def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC,bstrands1, cols, debugfile):
     messagefunc(dashb, cols, debugfile)
     messagefunc("running target processor...", cols, debugfile)
     outdict = {}
@@ -412,9 +420,9 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         messagefunc("target processor on target "+targetkey, cols, debugfile)
         #run local actual reciprocal check (check each hit of target only matches one query)
         if local_rec == "actual":
-            if len(targetval) > 1:
+            if len(targetval) > 1 or len(targetval.values()[0]) > 1:
                 messagefunc("running actual (per hit) reciprocity check", cols, debugfile)
-                targetval = actual_reciprocator(targetval,recip_overlap, metric, metricR)
+                targetval = actual_reciprocator(targetval,recip_overlap, bstrands1, metric, metricR)
             else:
                 messagefunc("only one hit for this target, no reciprocity check", cols, debugfile)
         #run hit overlapper and stitcher 
@@ -427,7 +435,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         if local_rec == "range":
             if len(tgt_proc_out) > 1:
                 messagefunc("running range reciprocity check", cols, debugfile)
-                tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, cols, debugfile) #check that each subcontig matches only 1 Q
+                tgt_proc_out = range_reciprocator(targetkey, tgt_proc_out, metric, metricR, recip_overlap, bstrands1, cols, debugfile) #check that each subcontig matches only 1 Q
             else:
                 messagefunc("only one query for this target, no reciprocity check", cols, debugfile)
         outdict[targetkey] = tgt_proc_out
@@ -449,22 +457,60 @@ def strand_selector(inpdict):
     return [clusterF, clusterR]
     
 #function to check that each target hit region matches to only one query
-# !!! implement direction check for translated searches
-def actual_reciprocator(inpdict, recip_overlap, metric, metricR):    
+def actual_reciprocator(inpdict, recip_overlap, bstrands2, metric, metricR):    
     returndict = inpdict
+    blacklisted = set()
     for refquerykey, refqueryval in inpdict.items():
-        for refhit in refqueryval.keys():
-            refhit_t_range = refqueryval[refhit][0:2]
-            refhit_score = refqueryval[refhit][6:9]
-            for testquerykey, testqueryval in inpdict.items():
-                if testquerykey != refquerykey:
-                    for testhit in testqueryval.keys():
-                        testhit_t_range = testqueryval[testhit][0:2]
-                        testhit_score = testqueryval[testhit][6:9]
-                        if getOverlap(refhit_t_range, testhit_t_range) > recip_overlap:
+        #hits with same target and query - check per strand
+        clusters = strand_selector(refqueryval)
+        cluster_scoring = []
+        for cluster in clusters:
+            for refhit in refqueryval.keys():
+                refhit_t_range = refqueryval[refhit][0:2]
+                refhit_score = refqueryval[refhit][6:9]
+                for testhit in cluster.keys():
+                    if testhit != refhit and (refquerykey, testhit) not in blacklisted:
+                        testhit_t_range = refqueryval[testhit][0:2]
+                        testhit_score = refqueryval[testhit][6:9]
+                        if getOverlap(refhit_t_range, testhit_t_range, recip_overlap) > recip_overlap:
                             comp1 = compare_scores(refhit_t_range, refhit_score, testhit_t_range, testhit_score, metric, metricR)
                             if comp1 == 0:
-                                del returndict[testquerykey][testhit]
+                                blacklisted.add((refquerykey, testhit))
+            strand_best_hit = []
+            for hitkey, hitval in cluster.items():
+                if (refquerykey, hitkey) not in blacklisted:
+                    if len(strand_best_hit) == 0:
+                        strand_best_hit = hitval
+                    else:
+                        comp1 = compare_scores(strand_best_hit[0:2], strand_best_hit[6:9], hitval[0:2], hitval[6:9], metric, metricR)
+                        if comp1 == 1:
+                            strand_best_hit = hitval
+            cluster_scoring.append(strand_best_hit)
+
+        if not bstrands2 and len(cluster_scoring[0]) > 0 and len(cluster_scoring[1]) > 0:
+            comp2 = compare_scores(cluster_scoring[0][0:2], cluster_scoring[0][6:9], cluster_scoring[1][0:2], cluster_scoring[1][6:9], metric, metricR)
+            if comp2 == 1:
+                for hitkey in clusters[0]:
+                    blacklisted.add((refquerykey, hitkey))
+            else:
+                for hitkey in clusters[1]:
+                    blacklisted.add((refquerykey, hitkey))
+
+        #hits with same target but different queries - check against all strands
+        for refhit in refqueryval.keys():
+            if (refquerykey, refhit) not in blacklisted:
+                for testquerykey, testqueryval in inpdict.items():    
+                    if testquerykey != refquerykey:
+                        for testhit in testqueryval.keys():
+                            if testhit != refhit and (testquerykey, testhit) not in blacklisted:
+                                testhit_t_range = testqueryval[testhit][0:2]
+                                testhit_score = testqueryval[testhit][6:9]
+                                if getOverlap(refhit_t_range, testhit_t_range, recip_overlap) > recip_overlap:
+                                    comp1 = compare_scores(refhit_t_range, refhit_score, testhit_t_range, testhit_score, metric, metricR)
+                                    if comp1 == 0:
+                                        blacklisted.add((testquerykey, testhit))
+    for bad_element in blacklisted:
+        del returndict[bad_element[0]][bad_element[1]]
     return returndict
 
 
@@ -503,9 +549,6 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
         print >> debugfile, querykey, ", selected best hit:", returnlist[indexer_function(querykey,str(0))]
     return returnlist
 
-#function to discard worse translation hits
-#input is dictionary {linecounter: [target_f, target_r, target_b, query_f, query_r, query_b, float(row[10]), float(row[11]),float(row[2])]}
-#return list of dictionaries
 def trans_selector(inpdict):
     #split into things per direction
     cluster1 = {}
@@ -555,23 +598,24 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
                         else:
                             maxtovlp = []
                             maxqovlp = []
+                            maxqovlpD = []
                             combovlp = []
                             for cp in range(len(currently_processing)):
-                                tovlp = getDist(trans_dict[sorted_startpoints[i]][0:2],currently_processing[cp][0:2])
-                                qovlp = getDist(trans_dict[sorted_startpoints[i]][3:5],currently_processing[cp][3:5])
+                                tovlp = getOverlap(trans_dict[sorted_startpoints[i]][0:2],currently_processing[cp][0:2], 1)
+                                qovlp = getOverlap(trans_dict[sorted_startpoints[i]][3:5],currently_processing[cp][3:5], 1)
+                                qovlpD = getOverlap(trans_dict[sorted_startpoints[i]][3:5],currently_processing[cp][3:5], hit_overlap)
                                 maxtovlp.append(tovlp)
                                 maxqovlp.append(qovlp)
+                                maxqovlpD.append(qovlpD)
                                 combovlp.append(tovlp+qovlp)
                             best_ind = combovlp.index(max(combovlp))
-                            # print trans_dict[sorted_startpoints[i]], currently_processing[best_ind], maxtovlp[best_ind], maxqovlp[best_ind], maxqovlp[best_ind] % 3
                             #if closest hit overlaps on query
-                            if maxqovlp[best_ind] > hit_overlap:
+                            if maxqovlpD[best_ind] > hit_overlap:
                                 #if also overlaps on target - extend proper layer
                                 if maxtovlp[best_ind] > 0:
                                     if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
                                         if maxqovlp[best_ind] % 3 == 0:
                                             currently_processing[best_ind] = extend_hit(currently_processing[best_ind], trans_dict[sorted_startpoints[i]])
-                                        #pic worst, possibly replacing hit
                                         else:
                                             comp0 = compare_scores(currently_processing[best_ind][0:2],currently_processing[best_ind][6:9], trans_dict[sorted_startpoints[i]][0:2],trans_dict[sorted_startpoints[i]][6:9], metric, metricR)
                                             #if current is better, do nothing, else replace current with i
@@ -599,7 +643,7 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
                     for sbctg in ovlp_processed:
                         subcontigs.append(sbctg)
 
-                        
+                messagefunc(str(len(subcontigs))+" contigs survived", cols, debugfile)
                 #this part will stitch hits of subcontigs
                 messagefunc("running hit stitcher...", cols, debugfile)
                 for sbctg in subcontigs:
@@ -635,12 +679,10 @@ def synteny_check(item1, item2, direct1, max_gap3, cols1, debugfile1):
         elif deltaQ < 0 and deltaT < 0:
             cond = False
     if not cond:
-        print >> debugfile1, item1, item2
         messagefunc("synteny check: direction "+str(direct1)+", dQ "+str(deltaQ)+", dT "+str(deltaT), cols1, debugfile1)
     if max_gap3 > 0:
         if abs(deltaT) > max_gap3 or abs(deltaQ) > max_gap3:
             cond = False
-            print >> debugfile1, item1, item2
             messagefunc("gap check: direction "+str(direct1)+", min dQ "+str(deltaQ)+", mit dT "+str(deltaT), cols1, debugfile1)
     return cond
 
@@ -648,7 +690,6 @@ def synteny_check(item1, item2, direct1, max_gap3, cols1, debugfile1):
 #join chunks in correct order
 #all coordinates are returned in forward orientation, direction maintained by [direct]
 def join_chunks(sbctg1, direct1, amlghitscore1, metricC1):
-    # print sbctg1, direct1
     median_query = {}
     start_query = {}
     end_query = {}
@@ -693,7 +734,6 @@ def join_chunks(sbctg1, direct1, amlghitscore1, metricC1):
         stitched_hits.append([start_target[key], end_target[key], start_query[key], end_query[key], eval_hit[key], bit_hit[key], ident_hit[key]])
         gapstart = end_query[key]
     stitched_sbctg1.append(stitched_hits)
-    # print stitched_sbctg1
     return stitched_sbctg1
 
 #function to join contigs in correct order
@@ -870,8 +910,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
                     return 2
     
 #function to check reciprocity based on whole ranges
-#!!! implement direction check for translated searches
-def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols, debugfile):
+def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, bstrands2, cols, debugfile):
     returnlist = {} #all queries for the target go here
     querylist = inpdict.keys() #list of all queries
     badkeys = set()
@@ -882,33 +921,38 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, cols
             ref_query_scores = inpdict[querykey][1]
             ref_query_direct = inpdict[querykey][0]
             for key in querylist: #running loop over other queries
-                if key not in badkeys and key.split("@")[0] != querykey.split("@")[0]: #all other queries
-                    current_query_range = inpdict[key][2]
-                    current_query_scores = inpdict[key][1]
-                    current_query_direct = inpdict[key][0]
-                    if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]]) > recip_overlap:
-                        print >> debugfile, "comparing", key, current_query_direct, current_query_range, current_query_scores, "with ref", querykey, ref_query_direct, ref_query_range, ref_query_scores
-                        comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
-                        if comp1 == 1:
-                            cond = False
-                            print >> debugfile, "bad", querykey
-                            # print >> debugfile, ref_query_range, ref_query_scores, current_query_range, current_query_scores
-                            badkeys.add(querykey)
-                            break
-                        elif comp1 == 0:
-                            print >> debugfile, "bad", key
-                            badkeys.add(key)
-                        elif comp1 == 2:
-                            wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
-                            warninglist.append(wrn)
-                            messagefunc(wrn, cols, debugfile)
-                            messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
-                            messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
+                if key not in badkeys:
+                    if (bstrands2 and key.split("@")[0] != querykey.split("@")[0]) or (not bstrands2 and key != querykey): #all other queries
+                        current_query_range = inpdict[key][2]
+                        current_query_scores = inpdict[key][1]
+                        current_query_direct = inpdict[key][0]
+                        if getOverlap([current_query_range[0],current_query_range[1]],[ref_query_range[0],ref_query_range[1]], recip_overlap) > recip_overlap:
+                            # print >> debugfile, "comparing", key, current_query_direct, current_query_range, current_query_scores, "with ref", querykey, ref_query_direct, ref_query_range, ref_query_scores
+                            comp1 = compare_scores(ref_query_range, ref_query_scores, current_query_range, current_query_scores, metric, metricR)
+                            if comp1 == 1:
+                                cond = False
+                                # print >> debugfile, "bad", querykey
+                                badkeys.add(querykey)
+                                if querykey in returnlist:
+                                    del returnlist[querykey]
+                                break
+                            elif comp1 == 0:
+                                # print >> debugfile, "bad", key
+                                badkeys.add(key)
+                                if querykey in returnlist:
+                                    del returnlist[querykey]
+                            elif comp1 == 2:
+                                wrn = "warning, target "+targetkey1+" at query "+querykey+" has equal hits to query "+key+", saved for both!"
+                                warninglist.append(wrn)
+                                messagefunc(wrn, cols, debugfile)
+                                messagefunc("match to current query: ref_query_scores[0] "+str(ref_query_scores[0])+", bitmax "+str(ref_query_scores[1]), cols, debugfile)
+                                messagefunc("match to "+key+": "+",".join(map(str, current_query_scores)), cols, debugfile)
             if cond: #only return good items
                 returnlist[querykey] = queryval
     messagefunc(str(len(returnlist))+" queries survived, "+str(len(badkeys))+" queries were filtered out by range reciprocity check", cols, debugfile)
     if len(badkeys) > 0:
         print >> debugfile, badkeys
+    print >> debugfile, "survived:", returnlist
     return returnlist
     
 #second main function
@@ -961,11 +1005,47 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
             else:
                 ctgn = str(int(len(tgt[1][3]) / 2 )+int(len(tgt[1][3]) % 2 ))
             messagefunc("supercontig "+str(tgt[0])+", number of contigs: "+ctgn+", score "+" ".join([str(x) for x in tgt[1][1]]), cols, debugfile)
-        if len(stitched_targets) > contignum and contignum > 0:
-            stitched_targets = stitched_targets[:contignum]
-        messagefunc("subset by max number of contigs, "+str(len(stitched_targets))+" supercontig passed", cols, debugfile)
+        if contignum == -1:
+            if len(stitched_targets) > 1:
+                stitched_targets = stitched_targets[:subset_stiched_targets(stitched_targets)]
+                if len(stitched_targets) > 1:
+                    msg = "locus "+querykey+" has close suboptimal hits"
+                    messagefunc(msg, cols, debugfile)
+                    warninglist.append(msg)
+                    messagefunc("subset by suboptimal scores, "+str(len(stitched_targets))+" supercontig passed", cols, debugfile)
+        elif contignum > 0:
+            if len(stitched_targets) > contignum:
+                dltE, dltB = score_ratio(stitched_targets[contignum-1],stitched_targets[contignum])
+                if dltE > 0.9 or dltB > 0.9:# or dltI > 0.9:
+                    msg = "locus "+querykey+" has close suboptimal hits "+str(dltE)+", "+str(dltB)#+", "+str(deltaI)
+                    messagefunc(msg, cols, debugfile)
+                    warninglist.append(msg)
+                stitched_targets = stitched_targets[:contignum]
+                messagefunc("subset by max number of contigs, "+str(len(stitched_targets))+" supercontig passed", cols, debugfile)
         returndict[querykey] = stitched_targets
     return returndict
+
+def subset_stiched_targets(targets1):
+    for tgt1 in range(1,len(targets1)):
+        ref = targets1[tgt1-1]
+        target1 = targets1[tgt1]
+        dltE, dltB = score_ratio(ref,target1)
+        if dltE <= 0.9 and dltB <= 0.9:
+            break
+    return tgt1
+
+
+def score_ratio(scores1, scores2):
+    refE = scores1[1][1][0]
+    testE = scores2[1][1][0]
+    if refE != 0.0 and testE != 0.0:
+        deltaE = max(math.log(refE),math.log(testE))/min(math.log(refE),math.log(testE))
+    else:
+        deltaE = 0
+    refB = scores1[1][1][1]
+    testB = scores2[1][1][1]
+    deltaB = min(refB, testB)/max(refB, testB)
+    return (deltaE, deltaB)
 
 #function to reformat target based dict into query based, running reference reciprocity check along the way
 # returnlist[querykey+"_"+str(subcont_index)] = stitched_subcontigs[subcont_index]
@@ -1018,7 +1098,6 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         best_ref_name = []
         best_ref_val = None
         #targets and values for the Q in the ref
-        # print target_ref[query].items()
         for target_ref_name, target_ref_val in target_ref[query].items():
             #this will have amalgamated scores and contig ranges for this target - compare with others
             # target_ref_val_stitched = hit_stitcher({target_ref_name: target_ref_val}, metric, metricR, hit_overlap, ac1, cols, debugfile)[target_ref_name+"@$0"] #stitched subcontigs per query
@@ -1027,7 +1106,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             target_ref_base_name = indexer_function(target_ref_name, None)[0]
             reference_q_region = target_ref_val[2][2:4]
             reference_t_region = target_ref_val[2][0:2]
-            if getOverlap(sample_q_region,reference_q_region) > recip_overlap:
+            if getOverlap(sample_q_region,reference_q_region, recip_overlap) > recip_overlap:
                 # the first overlapping region to consider
                 if len(best_ref_name) == 0 and best_ref_val == None:
                     best_ref_name = [target_ref_base_name]
@@ -1059,7 +1138,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                         # here we checking if it's the same region on query in forward table and reverse table, and then check best match
                         reciprocal_q_region = rec_hits[2][2:4]
                         reciprocal_t_region = rec_hits[2][0:2]
-                        if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
+                        if getOverlap(sample_t_region, reciprocal_q_region, recip_overlap) > recip_overlap:
                             # the first overlapping region to consider
                             if best_rec_name == None and best_rec_val == None:
                                 best_rec_name = rec_target_base
@@ -1075,7 +1154,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                         for hit_num, hit_val in rec_hits.items():
                             reciprocal_q_region = hit_val[3:5]
                             reciprocal_t_region = hit_val[0:2]
-                            if getOverlap(sample_t_region, reciprocal_q_region) > recip_overlap:
+                            if getOverlap(sample_t_region, reciprocal_q_region, recip_overlap) > recip_overlap:
                                 # the first overlapping region to consider
                                 if best_rec_name == None and best_rec_val == None:
                                     best_rec_name = rec_target_base
@@ -1112,7 +1191,6 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
         warninglist.append(msg)
         if rmrecnf:
             cond = False
-    print >> debugfile, cond
     return cond
 
 #function to rank targets based on their scores
@@ -1162,7 +1240,7 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, deb
                             if contig1[1][0][0] != contig2[1][0][0]:
                                 cond = False
                                 break
-                        stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4])
+                        stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4], contig_overlap)
                         if stitcher_overlap > contig_overlap:
                             cond = False
                             break
@@ -1170,7 +1248,7 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, deb
                         current_list.append(contig1)
                         removed_contigs.append(contig1)
                         supercontig_scores = amalgamate_scores(supercontig_scores, [contig1[1][1][0], contig1[1][1][1], contig1[1][1][2]], metricC)
-
+        # print >> debugfile, "current_list",current_list
         if len(current_list) > 1:
             supercontig_Qranges, supercontig_contigs = join_contigs(current_list)
             returndict[ctg_counter] = [[True], supercontig_scores, supercontig_Qranges, supercontig_contigs]
@@ -1190,7 +1268,6 @@ def reformat_table(inpdict, cols, debugfile):
         survived_queries.add(querykey)
         # total[ contig[ dir[], score[ ], Qrange[], contigs[ contig [ name, info[ ]]]]]
         #        N         N-0       N-1    N-2        N-3    N-3-M   N-3-M-0
-        # print "queryval",queryval
         for elemN in queryval: #elemN = N
             for elemM in elemN[1][3]:
                 if type(elemM) is not int:
@@ -1212,27 +1289,22 @@ def bltableout(output, bltableout_file, table_type):
 
 
 #function to compute overlap between two ranges supplied as lists with start and end
-#returns overlap value
-def getOverlap(a, b):
+#returns absolute or relative overlap value
+def getOverlap(a, b, o):
     a0=min(a)-1 #start one pos less to detect 1 position overlap
     a1=max(a)
     b0=min(b)-1 #start one pos less to detect 1 position overlap
     b1=max(b)
-    return max(0, min(a1, b1) - max(a0, b0))
-
-#function to compute overlap between two ranges supplied as lists with start and end
-#returns overlap value
-def getDist(a, b):
-    a0=min(a)-1 #start one pos less to detect 1 position overlap
-    a1=max(a)
-    # am = (a0+a1)/2
-    b0=min(b)-1 #start one pos less to detect 1 position overlap
-    b1=max(b)
-    # bm = (b0+b1)/2
-    if a0 < b0:
-        return a1-b0
+    if 0 < o < 1:
+        scaling_len = float(min(a1-a0, b1-b0))
+        return (min(a1, b1) - max(a0, b0))/scaling_len
     else:
-        return b1-a0
+        if min(a1, b1) - max(a0, b0) < min(abs(a1-a0),abs(b1-b0)):
+            return min(a1, b1) - max(a0, b0)
+        else:
+            return o+1
+    
+
 
 #function for writing actual sequence to file
 def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget):
@@ -1462,18 +1534,18 @@ def indexer_function(base1, index1):
 def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic1, debugfile):
     msg = "number of queries with OK results: "+str(len(survived_queries))
     messagefunc(msg, cols, debugfile, False)
-    messagefunc(msg, cols, debugfile_generic1, False)
+    print >> debugfile_generic1, msg
     msg = "number of queries without OK results: "+str(len(init_queries - survived_queries))
     messagefunc(msg, cols, debugfile, False)
-    messagefunc(msg, cols, debugfile_generic1, False)
+    print >> debugfile_generic1, msg
     print >> debugfile, "empty query list:"
     print >> debugfile, " ".join(list(init_queries - survived_queries))
     msg = "number of passed targets: "+str(len(survived_targets))
     messagefunc(msg, cols, debugfile, False)
-    messagefunc(msg, cols, debugfile_generic1, False)
+    print >> debugfile_generic1, msg
     msg = "number of filtered out targets: "+str(len(init_targets - survived_targets))
     messagefunc(msg, cols, debugfile, False)
-    messagefunc(msg, cols, debugfile_generic1, False)
+    print >> debugfile_generic1, msg
     # print >> debugfile, "filtered out targets:"
     # print >> debugfile, " ".join(list(init_targets - survived_targets))
 
@@ -1490,7 +1562,7 @@ else:
 
 messagefunc("alibaseq run with option "+filefolder+" selected", cols, debugfile_generic, False)
 messagefunc("command line parameters: "+' '.join(sys.argv), cols, debugfile_generic, False)
-
+messagefunc("contignum parameter: "+str(contignum), cols, debugfile_generic, False)
 
 #multi db option
 if filefolder == "M":
@@ -1577,7 +1649,7 @@ for b in blastlist:
     final_target_table = {}
     
     #run target processor
-    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, max_gap, amlghitscore, metricC, cols, debugfile)
+    target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp, recip_ovlp, ac, run_hs, max_gap, amlghitscore, metricC, bstrands, cols, debugfile)
     
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR, metricC, contignum, ctg_ovlp, interstitch, hit_ovlp, ac, recip_ovlp, ref_hs, rmrecnf, cols, debugfile)
@@ -1627,9 +1699,9 @@ for b in blastlist:
 
     debugfile.close()
 
-print len(warninglist)
-# for w in warninglist:
-#     print w
+print >> debugfile_generic, len(warninglist)
+for w in warninglist:
+    print >> debugfile_generic, w
 
 print >> debugfile_generic, "done"
 debugfile_generic.close()
