@@ -1012,7 +1012,7 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
                     msg = "locus "+querykey+" has close suboptimal hits"
                     messagefunc(msg, cols, debugfile)
                     warninglist.append(msg)
-                    messagefunc("subset by suboptimal scores, "+str(len(stitched_targets))+" supercontig passed", cols, debugfile)
+                messagefunc("subset by suboptimal scores, "+str(len(stitched_targets))+" supercontig passed", cols, debugfile)
         elif contignum > 0:
             if len(stitched_targets) > contignum:
                 dltE, dltB = score_ratio(stitched_targets[contignum-1],stitched_targets[contignum])
@@ -1026,13 +1026,18 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
     return returndict
 
 def subset_stiched_targets(targets1):
+    subopt = True
     for tgt1 in range(1,len(targets1)):
         ref = targets1[tgt1-1]
         target1 = targets1[tgt1]
         dltE, dltB = score_ratio(ref,target1)
         if dltE <= 0.9 and dltB <= 0.9:
+            subopt = False
             break
-    return tgt1+1
+    if subopt:
+        return tgt1+1
+    else:
+        return tgt1
 
 
 def score_ratio(scores1, scores2):
