@@ -107,7 +107,8 @@ else:
             trans_out = False
     else:
         trans_out = False
-
+    
+    outM = vars(args)["outM"]
     if vars(args)["targetf"] == None:
         dry_run = True
         noq = True
@@ -115,7 +116,6 @@ else:
     else:
         targetf = vars(args)["targetf"]
         dry_run = False
-        outM = vars(args)["outM"]
         if outM == "query":
             if vars(args)["queryf"] == None:
                 noq = True
@@ -1032,7 +1032,7 @@ def subset_stiched_targets(targets1):
         dltE, dltB = score_ratio(ref,target1)
         if dltE <= 0.9 and dltB <= 0.9:
             break
-    return tgt1
+    return tgt1+1
 
 
 def score_ratio(scores1, scores2):
