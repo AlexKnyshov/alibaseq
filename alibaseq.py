@@ -37,6 +37,7 @@ optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on qu
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="ctg_ovlp", type=float, default=0.2)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, >= 1 in bp, or relative 0 < N < 1',dest="recip_ovlp", type=float, default=10)
 optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15'], help='alignment table type',dest="bt", default="blast")
+optional.add_argument('--btR', choices=['blast','bed'], help='reference alignment table type',dest="btR", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
 optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reciprocal alignment coordinate type',dest="acr", default="dna-dna")
 optional.add_argument('--acR', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reference alignment coordinate type',dest="acR", default="dna-dna")
@@ -145,6 +146,7 @@ else:
             target_ref_file = vars(args)["target_ref_file"]
         acr = vars(args)["acr"]
         acR = vars(args)["acR"]
+        btR = vars(args)["btR"]
     rmrecnf = vars(args)["rmrecnf"]        
 
     hit_ovlp = vars(args)["hit_ovlp"]
@@ -409,6 +411,33 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile)
             linecounter += 1
     hmmfile.close()
     return targetdict
+
+
+#function for parsing a bed file (bait regions)
+def readbedfilefunc(b, cols, debugfile):
+    messagefunc("processing "+b, cols, debugfile, False)
+    returndict = {}
+    bedfile = open(b, "rU")
+    reader = csv.reader(bedfile, delimiter='\t')
+    linecounter = 0
+    for row in reader:
+        qname = row[3] # name field of BED
+        tname = row[0] # chrom field of BED
+        target_f = int(row[1]) # chromStart field of BED
+        target_r = int(row[2]) # chromEnd field of BED
+        query_f = 1
+        query_r = (target_r - target_f)+1
+        query_b = True
+        #score field is ignored
+        if row[5] == "+":
+            target_b = True
+        else:
+            target_b = False
+        returndict[qname] = {tname : {linecounter : [target_f, target_r, target_b, query_f, query_r, query_b, 0, 1, 100.0]}}
+    print >> debugfile, returndict
+    bedfile.close()
+    return returndict
+
 
 #first main function
 def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC,bstrands1, cols, debugfile):
@@ -1604,8 +1633,11 @@ else:
 
 #reciprocal table input
 if rec_search != None:
-    target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, acR, False, cols, debugfile_generic)
-    target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, max_gap, amlghitscore, metricC, cols, debugfile_generic)
+    if btR == "blast":
+        target_ref = readblastfilefunc(target_ref_file, evalue, bitscore, identity, False, acR, False, cols, debugfile_generic)
+        target_ref = process_aux_tables(target_ref, metric, metricR, hit_ovlp, acR, max_gap, amlghitscore, metricC, cols, debugfile_generic)
+    elif btR == "bed":
+        target_ref = readbedfilefunc(target_ref_file, cols, debugfile_generic)
 else:
     target_ref = None
 
