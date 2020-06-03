@@ -36,7 +36,7 @@ optional.add_argument('--translate', dest='trans_out', action='store_true', help
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="hit_ovlp", type=float, default=0.1)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="ctg_ovlp", type=float, default=0.2)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, >= 1 in bp, or relative 0 < N < 1',dest="recip_ovlp", type=float, default=10)
-optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15'], help='alignment table type',dest="bt", default="blast")
+optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15', "lastz"], help='alignment table type',dest="bt", default="blast")
 optional.add_argument('--btR', choices=['blast','bed'], help='reference alignment table type',dest="btR", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
 optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reciprocal alignment coordinate type',dest="acr", default="dna-dna")
@@ -438,6 +438,56 @@ def readbedfilefunc(b, cols, debugfile):
     bedfile.close()
     return returndict
 
+#function for parsing a blast output file
+def readlastzfilefunc(b, bitscore1, identity1, as_target, recstats, cols, debugfile):
+    messagefunc("processing "+b, cols, debugfile, False)
+    returndict = {}
+    lastzfile = open(b, "rU")
+    reader = csv.reader(lastzfile, delimiter='\t')
+    linecounter = 0
+    for row in reader:
+        if float(row[0]) >= bitscore1 and float(row[14]) >= identity1:
+            qname = row[6].split("/")[-1] #also allow *.fas
+            tname = row[1]
+            if recstats:
+                init_queries.add(qname)
+                init_targets.add(tname)
+            if as_target:
+                #populate target table
+                if tname in returndict:
+                    if qname in returndict[tname]:
+                        returndict[tname][qname][linecounter] = rowfunclastz(row)
+                    else:
+                        returndict[tname][qname] = {linecounter: rowfunclastz(row)}
+                else:
+                    returndict[tname] = {qname: {linecounter: rowfunclastz(row)}}
+            else:
+                #populate query table
+                if qname in returndict:
+                    if tname in returndict[qname]:
+                        returndict[qname][tname][linecounter] = rowfunclastz(row)
+                    else:
+                        returndict[qname][tname] = {linecounter: rowfunclastz(row)}
+                else:
+                    returndict[qname] = {tname: {linecounter: rowfunclastz(row)}}
+        linecounter += 1
+    lastzfile.close()
+    return returndict
+
+def rowfunclastz(row):
+    target_f = int(row[3])+1
+    target_r = int(row[4])
+    if row[2] == "+":
+        target_b = True
+    else:
+        target_b = False
+    query_f = int(row[8])+1
+    query_r = int(row[9])
+    if row[7] == "+":
+        query_b = True
+    else:
+        query_b = False
+    return [target_f, target_r, target_b, query_f, query_r, query_b, 0, float(row[0]), float(row[14])]
 
 #first main function
 def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC,bstrands1, cols, debugfile):
@@ -1603,6 +1653,8 @@ if filefolder == "M":
     #reading the blastfile
     if bt == "blast":
         blastlist = glob.glob(blastfilearg+"/*.blast")
+    elif bt == "lastz":
+        blastlist = glob.glob(blastfilearg+"/*.lastz")
     else:
         blastlist = glob.glob(blastfilearg+"/*.hmmer")
     if not dry_run:
@@ -1663,6 +1715,8 @@ for b in blastlist:
     #read alignment table
     if bt == "blast":
         output = readblastfilefunc(b, evalue, bitscore, identity, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
+    elif bt == "lastz":
+        output = readlastzfilefunc(b, bitscore, identity, True, True, cols, debugfile) #output 0 is query, 1 is target
     else:
         output = readhmmerfilefunc(b, evalue, bitscore, bt, ac, hmmerg, cols, debugfile)
     #read reciprocal alignment table
