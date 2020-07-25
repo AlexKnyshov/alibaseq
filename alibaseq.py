@@ -1178,7 +1178,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
     sample_t_region = queryval[2][0:2]
     # check out refence matches:
     if query in target_ref: #checking best contig for Q in reference
-        messagefunc("reference check", cols, debugfile)
+        messagefunc("reference check for "+query, cols, debugfile)
         best_ref_name = []
         best_ref_val = None
         #targets and values for the Q in the ref
@@ -1213,7 +1213,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
             messagefunc(msg, cols, debugfile)
             # check out sample to reference matches
             if targetkey1 in rec_dict: #checking for best contig for Q in current sample
-                messagefunc("sample check", cols, debugfile)
+                messagefunc("best match check on "+targetkey1, cols, debugfile)
                 best_rec_name = None
                 best_rec_val = None
                 for rec_target, rec_hits in rec_dict[targetkey1].items():
@@ -1711,8 +1711,9 @@ for b in blastlist:
     survived_targets = set()
     messagefunc("target table "+str(b1)+" out of "+str(len(blastlist)), cols, debugfile_generic, False)
     #set up sample debug file
-    debugfile = open(b.split("/")[-1]+"_"+logsuffix+".log", "w")
-    messagefunc("target log started: "+b, cols, debugfile_generic, False)
+    samplelogname = b.split("/")[-1]+"_"+logsuffix+".log"
+    debugfile = open(samplelogname, "w")
+    messagefunc("target log started: "+samplelogname, cols, debugfile_generic, False)
     #read alignment table
     if bt == "blast":
         output = readblastfilefunc(b, evalue, bitscore, identity, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
