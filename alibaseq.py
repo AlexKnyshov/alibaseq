@@ -1253,8 +1253,9 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric, metric
                 if best_rec_name == None:
                     msg = "no same region matches to target "+targetkey1+" in reciprocal table [strange, possibly queries for forward and reciprocal search differ]"
                     messagefunc(msg, cols, debugfile)
+                    if rmrecnf:
+                        cond = False
                     warninglist.append(msg)
-                    # cond = False
                 else:
                     msg = "best target: "+best_rec_name+", "+" ".join([str(x) for x in best_rec_val])
                     messagefunc(msg, cols, debugfile)
