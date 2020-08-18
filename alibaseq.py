@@ -1398,7 +1398,10 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget
         finalseq = SeqRecord(sequence)
         finalseq.id = seqname
     elif outM1 == "query":
-        fhandle = open(dir1+"/"+qname, "a")
+        if qname[-4::] != ".fas":
+            fhandle = open(dir1+"/"+qname+".fas", "a")
+        else:
+            fhandle = open(dir1+"/"+qname, "a")
         finalseq = SeqRecord(sequence)
         if cname1 == False or seqname == "none":
             finalseq.id = tname
