@@ -232,7 +232,7 @@ option `--ctg-ovlp` specifies max allowed contig overlap on query, 0 or >= 1 in 
 
 option `--lr` specifies local single best match check (prevents same part of the target contig being extracted to multiple queries). When set to `range`, each region of the target contig (after joining multiple hits) is allowed to be matched to only one query. When set to `actual`, individual hits are checked for the same condition prior to being joined together. Can be switched off by setting `none`. (default: range)
 
-option `--both-strands` treats different strands of the same contig region as potentially separate loci and not be removed by the local homology check. This was the default behavior prior to the introduction of the option. Now by default for each contig region only one best strand is possible. (default: False)
+option `--both-strands 1` treats different strands of the same contig region as potentially separate loci and not be removed by the local homology check. `--both-strands 0` allows only one best strand for each contig to be considered. (default: 1)
 
 option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check (both "local" and "global" checks), 0 or >= 1 in bp, or relative 0 < N < 1. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
 

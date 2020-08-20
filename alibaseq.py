@@ -54,7 +54,7 @@ optional.add_argument('--hmmer-global', dest='hmmerg', action='store_true', help
 optional.add_argument('--amalgamate-hits', dest='amlghitscore', action='store_true', help='combine score for different hits of the same contig', default=False)
 optional.add_argument('--max-gap', metavar='N', help='max gap between hits on either query or target, use 0 for no filtering',dest="max_gap", type=int, default=0)
 optional.add_argument('--cname', dest='cname', action='store_true', help='append original contig name to output sequence name', default=False)
-optional.add_argument('--both-strands', dest='bstrands', action='store_true', help='allow both strands of the same contig region to be considered', default=False)
+optional.add_argument('--both-strands', dest='bstrands', choices=['1','0'], help='allow both strands of the same contig region to be considered', default='1')
 #add possibility of single blast file and multiple fasta files
 #tied to that is extension in the query name (*.fas)
 #modify --lr to allow literally one query per contig. check that it works correctly with -x n etc...
@@ -173,7 +173,10 @@ else:
     ref_hs = vars(args)["ref_hs"]
     max_gap = vars(args)["max_gap"]
     amlghitscore = vars(args)["amlghitscore"]
-    bstrands = vars(args)["bstrands"]
+    if vars(args)["bstrands"] == '1':
+        bstrands = True
+    else:
+        bstrands = False
 
 
 dashb = "#"*75
@@ -1320,11 +1323,10 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, deb
                 else:
                     cond = True
                     for contig2 in current_list:
-                        #check names and directions - do not allow same contig be used in multiple directions:
+                        #check names - do not allow same contig stitching - reserved for hit stitcher only now:
                         if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
-                            if contig1[1][0][0] != contig2[1][0][0]:
-                                cond = False
-                                break
+                            cond = False
+                            break
                         stitcher_overlap = getOverlap(contig2[1][2][2:4],contig1[1][2][2:4], contig_overlap)
                         if stitcher_overlap > contig_overlap:
                             cond = False
