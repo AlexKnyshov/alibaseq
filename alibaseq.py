@@ -229,6 +229,8 @@ def readblastfilefunc(b, evalue1, bitscore1, identity1, as_target, ac3, recstats
         if evalue1: 
             if float(row[10]) <= evalue1 and float(row[11]) >= bitscore1 and float(row[2]) >= identity1:
                 qname = row[0].split("/")[-1] #also allow *.fas
+                if qname[-4::] == ".fas":
+                    qname = qname[:-4:]
                 tname = row[1]
                 if recstats:
                     init_queries.add(qname)
@@ -254,6 +256,8 @@ def readblastfilefunc(b, evalue1, bitscore1, identity1, as_target, ac3, recstats
             linecounter += 1
         else:
             qname = row[0].split("/")[-1]
+            if qname[-4::] == ".fas":
+                qname = qname[:-4:]
             tname = row[1]
             if as_target:
                 #populate target table
@@ -349,7 +353,7 @@ def readhmmerfilefunc(b, evalue1, bitscore1, bt1, ac1, hmmerg1, cols, debugfile)
         if row[0] != "#":
             line = row.strip().split()
             if float(line[eval1]) <= evalue1 and float(line[bit1]) >= bitscore1:
-                qname = line[qname1]+".fas"
+                qname = line[qname1]
                 if ac1 == "aa-tdna":
                     tname = "_".join(line[tname1].split("_")[:-1])
                     strand = line[tname1].split("_")[-1][0]
@@ -451,6 +455,8 @@ def readlastzfilefunc(b, bitscore1, identity1, as_target, recstats, cols, debugf
     for row in reader:
         if float(row[0]) >= bitscore1 and float(row[14]) >= identity1:
             qname = row[6].split("/")[-1] #also allow *.fas
+            if qname[-4::] == ".fas":
+                qname = qname[:-4:]
             tname = row[1]
             if recstats:
                 init_queries.add(qname)
