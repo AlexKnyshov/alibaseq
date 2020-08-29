@@ -36,7 +36,7 @@ The following assumptions were used when developing the script:
 
 
 ## Dependencies
-Python 2.7, Biopython
+Python 2 or 3, Biopython
 
 ## Installation
 Clone the repository like this:
@@ -180,7 +180,7 @@ option `-x` specifies the extraction type: `n` extracts the whole contig, `s` ex
 
 ![extraction_modes.png](extraction_modes.png)
 
-option `-c` specifies the max number of (super)contigs to extract. By default it is set to 0, which causes all supercontigs to be extracted. If a single (best matching) contig needs to be extracted, so `-c` should be set to 1. (default: 0) 
+option `-c` specifies the max number of (super)contigs to extract. By default it is set to 0, which causes all supercontigs to be extracted. If a single (best matching) contig needs to be extracted, so `-c` should be set to 1. If a set of one or several closely similar hits to be extracted, should be set to -1 (`-c=-1`) (default: 0) 
 
 option `--fl` specifies flanks on each side in bp. This option is only available when `-x` is set to `s` or `b`. (default: 0)
 
@@ -238,8 +238,10 @@ option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reci
 
 ![recip.png](recip.png)
 
-option `--rm-rec-not-found` does not consider contig regions that are found in forward search but not in reverse search; by default, missing data equates to contig passing reciprocal best match criterion (default: False)
+option `--rm-rec-not-found` turns on the STRICT RBH check, by not considering contig regions that are found in forward search but not in reverse search or in the reference search; by default, missing data equates to contig passing reciprocal best match criterion (RELAXED RBH check) (default: False)
 
+option `--srt` can be used to adjust the definition of the close suboptimal hits, via the ratio of log(E value) and ratio of bit scores between two hits. If ratio is greater than the supplied values, two hits are considered to be similar enough for the paralog warning and the `-c=-1` suboptimal hit extraction option purposes. (default: 0.9)
+ 
 
 ## Log file description
 
@@ -288,23 +290,24 @@ It can be used on transcriptomic, low coverage or well-assembled genomic data or
 
 *If I want to recover a set of pre-determined loci from newly sequences transcriptomes what default parameters would I use? What parameters might I adjust to get better recovery?*
 
-Answer
+Depending on the contiguity of the transcriptomic assembly, contig stitcher may be unnecessary. Lowering the evalue, bitscore, and identity thresholds may help with recovery of divergent hits.
 
 *If I want to recover a set of pre-determined loci from newly sequenced low coverage genome data what default parameters would I use? What parameters might I adjust to get better recovery?*
 
-Answer
+A whole genome assembly produced from short reads is in our experience not very contiguous. If baits permit (i.e., they target putatively single-copy divergent from each other loci), contig stitcher may help with recovery of larger regions. If protein search is used, --hit-ovlp and --ctg-ovlp should be increased in our experience to about 30-40bp. This will help recovering larger sequences, at the expense of having larger unmatching 'splash zones' between the exons. Trimming those via MSA or exonerate is possible. Lowering the evalue, bitscore, and identity thresholds may help with recovery of divergent hits.
 
 *If I want to recover a set of pre-determined loci from newly sequenced target capture data what default parameters would I use? What parameters might I adjust to get better recovery?*
 
-Answer
+If the capture targeted shorter regions (e.g., UCE), simple procedure as for transcriptomes can be used. If the capture targeted longer multiexon genes, it depends on the size of the introns. In AHE projects introns are typically small, thus the assembly would likely have a complete target region for a given bait in a single contig, thus making contig stitcher unnecessary. However, if introns were large and assembly becomes discontinuous, contig stitcher may help. See the low coverage genome question for details. Another caveat with hybrid capture data using assembly of all reads is lack of reference to read coverage. While for UCE (which uses similar `assemble > search for contigs` approach) this empirically appears to have little problems, theoretically low coverage contaminants (either other samples or other organisms in a given sample) may be erroneously picked up. Thus it may be reasonable after the assembly stage to filter low covered contigs either from the assembly or from the resulting blast table (Velvet and Spades append k-mer coverage to contig names).
 
 *What is the best way to assess different parameters I've used to determine which ones work the best in terms of low false positive rates and maximum recovery?*
 
-Answer
+It is hard to come up with an accurate way to assess the false positive rate for an empirical study, where true homolog sequence is unknown. But typically false positives manifest themselves in the downstream analyses. If false positives are a problem (for example, when using a protein bait on a divergent organism), using RBH check is highly recommended. For divergent from bait organisms or very low coverage genomes strict RBH check as well as using tblastx for the reciprocal search are recommended.
+The recovery may be assessed by the number of hits recovered, as well as by looking at coverage breadth of loci at the alignment stage. If recovery is not sufficient, while false-positives are not a problem, lowering the search sequence similarity thresholds as well as using a relaxed RBH check may help. If recovery is patchy from exon to exon, `--hit-ovlp` might need to be increased. If it is hard to get a good balance between the recovery and the false positive rates, assuming the sample was sequenced well, the bait sequence set may need to be adjusted (use more similar baits, avoid loci with known paralogs)
 
-*I work on a non-model organism and I have a a very low coverage genome but I want to include it in a phylogenetic analysis with some well relatively well sequenced trancriptomes from the same kind or organism without any annotations. What is the best way to test out the program to see if it works for me?*
+*I work on a non-model organism and I have a very low coverage genome but I want to include it in a phylogenetic analysis with some well relatively well sequenced trancriptomes from the same kind or organism without any annotations. What is the best way to test out the program to see if it works for me?*
 
-Answer
+ALiBaSeq is designed for the datasets that have predetermined bait (loci) set. If no baits are available for the set of transcriptomes, transcripts can be turned into putative proteins and subjected to an all-vs-all orthology prediction (e.g., OrthoMCL). Alternatively, an available bait set can be used (OrthoDB, UCE, AHE, other publicly available loci sets). In this case, after getting the bait file with bait sequences formatted (see workflow or in the test folder), BLAST/HMMER/LASTZ searches can be done and ALiBaSeq can be then used to process the search results. Since the genome sample will likely require different parameters, we recommend to process it separately from the transcriptomes (one after another). We also recommend using a reciprocal search, for which a reference taxon would be needed. If baits used came from a different source and the assembly / transcriptome / proteome of the bait donor organism is no available, one of the sample transcriptomes (ideally, the most complete one) can be used as the reference. In addition to the baits vs samples searches, the baits vs reference sample search (same way as bait vs sample) as well as reciprocal search (sample vs reference sample) are need to be done (see workflow).
 
 *Aren't UCEs and AHE loci very different? Why didn't you evaluate AHE loci?* 
 
