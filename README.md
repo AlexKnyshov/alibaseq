@@ -376,10 +376,10 @@ Each line of the log corresponds to a bait sequence and its extracted match from
 					<HSP_start_on_bait>, <HSP_end_on_bait>, 
 					<HSP_evalue>, <HSP_bitscore>, <HSP_identity>], `
 					* `<gap>,` 
-					* `<HSP_evalue>, <HSP_bitscore>, <HSP_identity>], `
+					* `[<another HSP>], `
 					* `<gap>,`
 					* `...`
-					* `<HSP_evalue>, <HSP_bitscore>, <HSP_identity>]`
+					* `[<last HSP>]`
 				* `]`
 			* `]],`
 			* `<gap>,`
