@@ -207,7 +207,111 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 
 ### Variable baits / genetically distant samples - Protein-based search
 
-#### Multiple samples example
+DNA baits are assumed. If baits are protein, replace tblastx commands below with tblastn
+
+#### Single sample
+
+##### Without reciprocal search
+
+Create a blast database
+```
+makeblastdb -in assembly.fasta -dbtype nucl -parse_seqids
+```
+Perform the search
+```
+tblastx -query baits.fas -db assembly.fasta \
+-outfmt 6 -out assembly.fasta.blast -evalue 1e-10 -num_threads 1
+```
+Adjust E-value and number of threads approapriately
+
+**ALTERNATIVE APPROACH (slower)** If baits are separate collections of FASTA sequences (e.g., locus alignments), located in the baits_folder, the search can be done with the following helper script, taking the first sequence from each file:
+```
+bash blast_wrapper.sh ./baits_folder/ assembly.fasta 1e-10 tblastx 1 n
+```
+
+Then run ALiBaSeq:
+```
+python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta.blast \
+ -e 1e-10 --is --amalgamate-hits --ac tdna-tdna
+```
+##### With a reciprocal search
+
+Create a blast database for the sample
+```
+makeblastdb -in assembly.fasta -dbtype nucl -parse_seqids
+```
+
+Create a blast database for the reference sample
+```
+makeblastdb -in reference.fasta -dbtype nucl -parse_seqids
+```
+
+Search baits vs the sample
+```
+tblastx -query baits.fas -db assembly.fasta -outfmt 6 \
+-out assembly.fasta.blast -evalue 1e-10 -num_threads 1
+```
+Adjust E-value and number of threads appropriately
+
+Search baits vs the reference sample, assuming that is the bait donor
+```
+blastn -query baits.fas -db reference.fasta -outfmt 6 \
+-out reference.fasta.blast -num_threads 1
+```
+BED file can be used if the locations of bait regions are known
+
+For the RBH check, the sample assembly needs to be searched against the reference assembly (or proteome). Since it takes longer and, as opposed to an OrthoMCL type orthology prediction, only sample contigs that had hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. If tblastx search takes too long, or requires a lot of resources (typically only for large and highly contiguous assembly), a dc-megablast search can be performed instead.
+```
+bash reciprocal_search.sh assembly.fasta.blast assembly.fasta reference.fasta tblastx 1 n reciprocal_get_contigs.py
+```
+Adjust the number of threads appropriately
+
+Then run ALiBaSeq:
+```
+python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
+-e 1e-10 --is --amalgamate-hits -r assembly.fasta.blast_reciprocal.blast \
+-R reference.fasta.blast --ac tdna-tdna --acr tdna-tdna
+```
+
+#### Multiple samples
+
+
+##### Without reciprocal search
+
+For a group of files, located in the same folder, the dbs can be created like this
+```
+for f in folder_with_assemblies/*.fasta
+do
+	makeblastdb -in $f -dbtype nucl -parse_seqids
+done
+```
+Perform the search
+```
+mkdir blast_results
+for f in folder_with_assemblies/*.fasta
+do
+	tblastx -query baits.fas -db $f -outfmt 6 \
+	-out $f".blast" -evalue 1e-10 -num_threads 1
+	mv "folder_with_assemblies/"$f".blast" ./blast_results/
+done
+```
+Adjust E-value and number of threads approapriately
+
+
+**ALTERNATIVE APPROACH (slower)** If baits are separate collections of FASTA sequences (e.g., locus alignments), located in the baits_folder, the search can be done with the following helper script, taking the first sequence from each file. But at first a list of sample files needs to be created.
+```
+ls folder_with_assemblies/*.fasta | rev | cut -f1 -d/ | rev > list_of_files_to_seach_against.txt
+bash blast_wrapper.sh ./query_folder/ ./folder_with_assemblies/ 1e-10 \
+tblastx 1 n ./list_of_files_to_seach_against.txt
+mkdir blast_results
+mv *.blast blast_results
+```
+
+Then run ALiBaSeq:
+```
+python alibaseq.py -x a -f M -b ./blast_results/ -t ./folder_with_assemblies/ \
+-e 1e-10 --is --amalgamate-hits --ac tdna-tdna
+```
 
 ##### With a reciprocal search
 
@@ -215,7 +319,7 @@ For a group of files, located in the same folder, the dbs can be created like th
 ```
 for f in folder_with_assemblies/*.fasta
 do
-makeblastdb -in $f -dbtype nucl -parse_seqids
+	makeblastdb -in $f -dbtype nucl -parse_seqids
 done
 ```
 Create a blast database for the reference sample
@@ -227,7 +331,7 @@ Perform the forward search
 mkdir blast_results
 for f in folder_with_assemblies/*.fasta
 do
-	blastn -task dc-megablast -query baits.fas -db $f \
+	tblastx -task dc-megablast -query baits.fas -db $f \
 	-outfmt 6 -out $f".blast" -evalue 1e-10 -num_threads 1
 	mv "folder_with_assemblies/"$f".blast" ./blast_results/
 done
@@ -244,7 +348,7 @@ BED file can be used if the locations of bait regions are known
 Perform the reciprocal search
 ```
 bash reciprocal_search.sh blast_results folder_with_assemblies \
-reference.fasta dc-megablast 1 n reciprocal_get_contigs.py \
+reference.fasta tblastx 1 n reciprocal_get_contigs.py \
 list_of_files_to_seach_against.txt
 ```
 Adjust the number of threads appropriately
@@ -252,8 +356,10 @@ Adjust the number of threads appropriately
 Then run ALiBaSeq:
 ```
 python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
--e 1e-10 --is --amalgamate-hits -r blast_results -R reference.fasta.blast
+-e 1e-10 --is --amalgamate-hits -r blast_results -R reference.fasta.blast \
+--ac tdna-tdna --acr tdna-tdna
 ```
+
 
 ## Other features and parameter description
 
