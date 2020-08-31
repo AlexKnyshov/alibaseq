@@ -28,7 +28,7 @@ optional.add_argument('--om', choices=['query','target', 'combined'], help='outp
 optional.add_argument('-e', metavar='N', help='evalue cutoff',dest="evalue", type=float, default=0.01)
 optional.add_argument('-i', metavar='N', help='identity cutoff',dest="identity", type=float, default=0.0)
 optional.add_argument('-B', metavar='N', help='bitscore cutoff',dest="bitscore", type=float, default=0.0)
-optional.add_argument('-c', metavar='N', help='number of contigs to extract; if set to 0, then extract all contigs; if set to -1, then extract the best and all close matches',dest="contignum", type=int, default=0)
+optional.add_argument('-c', metavar='N', help='number of contigs to extract; if set to 0, then extract all contigs; if set to -1, then extract the best and all close matches',dest="contignum", type=int, default=1)
 optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
 optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
 optional.add_argument('--is', dest='interstitch', action='store_true', help='perform contig stitching', default=False)
