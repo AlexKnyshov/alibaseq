@@ -69,21 +69,21 @@ else:
     hmmerg = vars(args)["hmmerg"]
     if bt == "hmmer18":
         if vars(args)["extractiontype"] != "n":
-            print "only whole contig extraction is supported for hmmer18 tables, option -x ignored"
+            print ("only whole contig extraction is supported for hmmer18 tables, option -x ignored")
         if vars(args)["ac"] != "aa-aa":
-            print "hmmer18 tables are only for AA vs AA search, option --ac ignored"
+            print ("hmmer18 tables are only for AA vs AA search, option --ac ignored")
         extractiontype = "n"
         ac = "aa-aa"
     elif bt == "hmmer15":
         if vars(args)["ac"] != "dna-dna":
-            print "hmmer15 tables are only for DNA vs DNA search, option --ac ignored"
+            print ("hmmer15 tables are only for DNA vs DNA search, option --ac ignored")
         ac = "dna-dna"
         extractiontype = vars(args)["extractiontype"]
     else:
         ac = vars(args)["ac"]
         extractiontype = vars(args)["extractiontype"]
     if vars(args)["no_hs"] or extractiontype == "n" or extractiontype == "s":
-        print "without hit stitcher, contig stitching is disabled, option --is ignored"
+        print ("without hit stitcher, contig stitching is disabled, option --is ignored")
         run_hs = False
         interstitch = False
     else:
@@ -96,12 +96,12 @@ else:
     if vars(args)["trans_out"]:
         if extractiontype == "s" or extractiontype == "a":
             if ac == "aa-aa" or ac == "tdna-aa":
-                print "should not attempt to translate AA sequence, option --translate ignored"
+                print ("should not attempt to translate AA sequence, option --translate ignored")
                 trans_out = False
             else:
                 trans_out = True
         else:
-            print "will only translate exact matches (options -x s or -x a), option --translate ignored"
+            print ("will only translate exact matches (options -x s or -x a), option --translate ignored")
             trans_out = False
     else:
         trans_out = False
@@ -110,7 +110,7 @@ else:
     if vars(args)["targetf"] == None:
         dry_run = True
         noq = True
-        print "option -q ignored"
+        print ("option -q ignored")
     else:
         targetf = vars(args)["targetf"]
         dry_run = False
@@ -137,7 +137,7 @@ else:
     else:
         rec_search = vars(args)["rec_search"]
         if vars(args)["target_ref_file"] == None:
-            print "please specify -R"
+            print ("please specify -R")
             sys.exit()
         else:
             target_ref_file = vars(args)["target_ref_file"]
@@ -148,15 +148,15 @@ else:
 
     hit_ovlp = vars(args)["hit_ovlp"]
     if hit_ovlp < 0:
-        print "overlap value must be 0 or positive"
+        print ("overlap value must be 0 or positive")
         sys.exit()
     ctg_ovlp = vars(args)["ctg_ovlp"]
     if ctg_ovlp < 0:
-        print "overlap value must be 0 or positive"
+        print ("overlap value must be 0 or positive")
         sys.exit()
     recip_ovlp = vars(args)["recip_ovlp"]
     if recip_ovlp < 0:
-        print "overlap value must be 0 or positive"
+        print ("overlap value must be 0 or positive")
         sys.exit()
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
@@ -189,8 +189,8 @@ def messagefunc(msg, columns, f, fl=True):
         sys.stdout.flush()
     else:
         sys.stdout.write((" "*columns)+"\r")
-        print msg
-    print >> f, msg
+        print (msg)
+    print (msg, file=f)
 
 
 #function for creating an output folder. old stuff will be deleted
@@ -208,7 +208,6 @@ def copyfunc(dir1, cols, debugfile):
     copyfunc_c = 0
     for x in glob.glob(queryf+"/*.fa*"):
         locusfname = x.split("/")[-1]
-        #print locusfname
         if not os.path.exists (dir1+"/"+locusfname):
             prog = "copying "+str(locusfname)+"..."
             messagefunc(prog, cols, debugfile)
@@ -437,7 +436,7 @@ def readbedfilefunc(b, cols, debugfile):
         else:
             target_b = False
         returndict[qname] = {tname : {linecounter : [target_f, target_r, target_b, query_f, query_r, query_b, 0, 1, 100.0]}}
-    print >> debugfile, returndict
+    print (returndict, file = debugfile)
     bedfile.close()
     return returndict
 
@@ -505,7 +504,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_ove
         messagefunc("target processor on hit "+targetkey, cols, debugfile)
         #run local actual reciprocal check (check each hit of target only matches one query)
         if local_rec == "actual":
-            if len(targetval) > 1 or len(targetval.values()[0]) > 1:
+            if len(targetval) > 1 or len(list(targetval[x] for x in targetval)[0]) > 1:
                 messagefunc("running actual (per HSP) reciprocity check", cols, debugfile)
                 targetval = actual_reciprocator(targetval,recip_overlap, bstrands1, metric, metricR)
             else:
@@ -550,10 +549,10 @@ def actual_reciprocator(inpdict, recip_overlap, bstrands2, metric, metricR):
         clusters = strand_selector(refqueryval)
         cluster_scoring = []
         for cluster in clusters:
-            for refhit in refqueryval.keys():
+            for refhit in list(x for x in refqueryval):
                 refhit_t_range = refqueryval[refhit][0:2]
                 refhit_score = refqueryval[refhit][6:9]
-                for testhit in cluster.keys():
+                for testhit in list(x for x in cluster):
                     if testhit != refhit and (refquerykey, testhit) not in blacklisted:
                         testhit_t_range = refqueryval[testhit][0:2]
                         testhit_score = refqueryval[testhit][6:9]
@@ -582,11 +581,11 @@ def actual_reciprocator(inpdict, recip_overlap, bstrands2, metric, metricR):
                     blacklisted.add((refquerykey, hitkey))
 
         #hits with same target but different queries - check against all strands
-        for refhit in refqueryval.keys():
+        for refhit in list(x for x in refqueryval):
             if (refquerykey, refhit) not in blacklisted:
                 for testquerykey, testqueryval in inpdict.items():    
                     if testquerykey != refquerykey:
-                        for testhit in testqueryval.keys():
+                        for testhit in list(x for x in testqueryval):
                             if testhit != refhit and (testquerykey, testhit) not in blacklisted:
                                 testhit_t_range = testqueryval[testhit][0:2]
                                 testhit_score = testqueryval[testhit][6:9]
@@ -611,7 +610,7 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
         best_data1 = None
         for cluster_index in range(2):
             direct = directions[cluster_index]
-            hits1 = clusters[cluster_index].values()
+            hits1 = list(clusters[cluster_index][x] for x in clusters[cluster_index])
             for hit_index in range(len(hits1)):
                 if best_index1 == None:
                     best_index1 = hit_index
@@ -631,7 +630,7 @@ def reformat_hits(inpdict, metric, metricR, cols, debugfile):
                         best_score1 = hits1[hit_index][6:9]
                         best_data1 = best_range1+best_score1
         returnlist[indexer_function(querykey,str(0))] = [best_dir1, best_score1, best_range1, best_data1]
-        print >> debugfile, querykey, ", selected best hit:", returnlist[indexer_function(querykey,str(0))]
+        print (querykey, ", selected best hit:", returnlist[indexer_function(querykey,str(0))], file = debugfile)
     return returnlist
 
 #function to split hits by 'absolute' strand
@@ -737,7 +736,7 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2, max_gap2, amlghitsc
                     stitched_subcontigs.append(stitched_subcontig)
             #if only one hit
             if len(clusters[cluster_index]) == 1:
-                sbctg = clusters[cluster_index].values()
+                sbctg = list(clusters[cluster_index][x] for x in clusters[cluster_index])
                 stitched_subcontig = join_chunks(sbctg, direct, amlghitscore, metricC)
                 stitched_subcontigs.append(stitched_subcontig)
 
@@ -802,10 +801,10 @@ def join_chunks(sbctg1, direct1, amlghitscore1, metricC1):
             else:
                 scores_sbctg1 = [min(scores_sbctg1[0], eval_hit[chunk]), max(scores_sbctg1[1], bit_hit[chunk]), max(scores_sbctg1[2], ident_hit[chunk])]
         #ranges
-        start_target_subctg = min(start_target.values())
-        end_target_subctg = max(end_target.values())
-        start_query_subctg = min(start_query.values())
-        end_query_subctg = max(end_query.values())
+        start_target_subctg = min(list(start_target[x] for x in start_target))
+        end_target_subctg = max(list(end_target[x] for x in end_target))
+        start_query_subctg = min(list(start_query[x] for x in start_query))
+        end_query_subctg = max(list(end_query[x] for x in end_query))
     gapstart = 0
     # stitched_subcontigs = [[direct],[scores],[ranges],[hits: [range, score], gap, [range, score], gap ...]]
     stitched_sbctg1 = []
@@ -835,8 +834,8 @@ def join_contigs(inplist):
         target_dict[target[0]] = target[1]
     gapstart = 0
     returnlist = []
-    start_query_superctg = min(start_query.values())
-    end_query_superctg = max(end_query.values())
+    start_query_superctg = min(list(start_query[x] for x in start_query))
+    end_query_superctg = max(list(end_query[x] for x in end_query))
     for key in sorted(median_query, key=lambda x: median_query[x]):
         if gapstart > 0:
             returnlist.append(start_query[key]-gapstart)
@@ -975,7 +974,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
 #function to check reciprocity based on stitched match ranges (rather than individual HSP ranges)
 def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, bstrands2, cols, debugfile):
     returnlist = {} #all queries for the target go here
-    querylist = inpdict.keys() #list of all queries
+    querylist = list(x for x in inpdict) #list of all queries
     badkeys = set()
     for querykey, queryval in inpdict.items(): #queries for a given target
         if querykey not in badkeys:
@@ -1014,8 +1013,8 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap, bstr
                 returnlist[querykey] = queryval
     messagefunc(str(len(returnlist))+" queries survived, "+str(len(badkeys))+" queries were filtered out by range reciprocity check", cols, debugfile)
     if len(badkeys) > 0:
-        print >> debugfile, badkeys
-    print >> debugfile, "survived:", returnlist
+        print (badkeys, file = debugfile)
+    print ("survived:", returnlist, file = debugfile)
     return returnlist
     
 #second main function
@@ -1059,7 +1058,7 @@ def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC, con
                         ctg_counter += 1
         else:
             messagefunc("only one hit, no ranking and stitching", cols, debugfile)
-            reformatted_queryval = [queryval.keys()[0], queryval.values()[0]]
+            reformatted_queryval = [list(x for x in queryval)[0], list(queryval[x] for x in queryval)[0]]
             stitched_targets = [[0, [[True], reformatted_queryval[1][1], reformatted_queryval[1][2],[reformatted_queryval]]]]
         # 5 get top [contignum] contigs from step 4, output
         for tgt in stitched_targets:
@@ -1351,9 +1350,9 @@ def reformat_table(inpdict, cols, debugfile):
 def bltableout(output, bltableout_file, table_type):
     for key, value in sorted(output.items()):
         if table_type == "target":
-            print >> bltableout_file, key+","+str(len(value))+","+",".join(value)
+            print (key+","+str(len(value))+","+",".join(value), file = bltableout_file)
         elif table_type == "query":
-            print >> bltableout_file, key, value
+            print (key, value, file = bltableout_file)
 
 
 #function to compute overlap between two ranges supplied as lists with start and end
@@ -1516,7 +1515,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
     messagefunc("searching for contigs in: "+target_db_name1+", total number of contigs to extract: "+str(c1), cols1, debugfile1, False)
     if outM1 == "query":
         target_set = {}
-        for qkey in final_table1.keys():
+        for qkey in list(x for x in final_table1):
             target_set[qkey] = set()
     else:
         target_set = {"main": set()}
@@ -1538,7 +1537,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                 #get the sequence
                                 messagefunc(str(c1)+" EXTRACTING: contig "+targetname+", query "+qname, cols1, debugfile1)
                                 s1 = get_sequence(final_table1[qname][sprcontig][1][3][t][1], seq, extractiontype1, flanks1, trans_out1, ac1, metric, metricR, keep_strand)
-                                print >> debugfile1, "- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1]
+                                print ("- EXTRACTING: final seq", s1[:10], "ranges", final_table1[qname][sprcontig][1][3][t][1], file = debugfile1)
                                 if num_contigs == 1:
                                     #check if same target was used:
                                     use_suffix = False
@@ -1573,7 +1572,7 @@ def process_fasta(target_db_name1, inputf1, final_table1, final_target_table1, e
                                         # bucket filled, dump
                                         s1 = dumper(final_table1[qname][sprcontig][1][3], extractiontype1, trans_out1, ac1)
                                         messagefunc(str(c1)+" EXTRACTING: bucket "+qname+" dumped", cols1, debugfile1)
-                                        print >> debugfile1, "- EXTRACTING: final seq", s1[:10]#, "ranges", final_table[qname][sprcontig][1]
+                                        print ("- EXTRACTING: final seq", s1[:10], file = debugfile1)#, "ranges", final_table[qname][sprcontig][1]
                                         seqwritefunc(s1, qname, target_db_name1, "Merged_"+qname+"_supercontig_"+str(sprcontig), outM1, output_dir1, cname1, append_name1)
                                         # clean up
                                         for subb in final_table1[qname][sprcontig][1][3]:
@@ -1604,18 +1603,18 @@ def indexer_function(base1, index1):
 def estimate_survival(init_queries, init_targets, survived_queries, survived_targets, cols, debugfile_generic1, debugfile):
     msg = "number of queries with OK results: "+str(len(survived_queries))
     messagefunc(msg, cols, debugfile, False)
-    print >> debugfile_generic1, msg
+    print (msg, file = debugfile_generic1)
     msg = "number of queries without OK results: "+str(len(init_queries - survived_queries))
     messagefunc(msg, cols, debugfile, False)
-    print >> debugfile_generic1, msg
-    print >> debugfile, "empty query list:"
-    print >> debugfile, " ".join(list(init_queries - survived_queries))
+    print (msg, file = debugfile_generic1)
+    print ("empty query list:", file = debugfile)
+    print (" ".join(list(init_queries - survived_queries)), file = debugfile)
     msg = "number of passed hits: "+str(len(survived_targets))
     messagefunc(msg, cols, debugfile, False)
-    print >> debugfile_generic1, msg
+    print (msg, file = debugfile_generic1)
     msg = "number of filtered out hits: "+str(len(init_targets - survived_targets))
     messagefunc(msg, cols, debugfile, False)
-    print >> debugfile_generic1, msg
+    print (msg, file = debugfile_generic1)
     # print >> debugfile, "filtered out targets:"
     # print >> debugfile, " ".join(list(init_targets - survived_targets))
 
@@ -1658,7 +1657,7 @@ elif filefolder == "S" or "SM":
 if dry_run:
     messagefunc("dry run, no sample files", cols, debugfile_generic, False)
 else:
-    messagefunc("list of sample fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
+    messagefunc("list of target fasta files detected (mask *.fasta):", cols, debugfile_generic, False)
     for l in targetlist:
         messagefunc(l, cols, debugfile_generic)
     #make modified dir
@@ -1717,8 +1716,8 @@ for b in blastlist:
             if ref_hs:
                 rec_out = process_aux_tables(rec_out, metric, metricR, hit_ovlp, acr, max_gap, amlghitscore, metricC, cols, debugfile)
         else:
-            print "problem with finding the reciprocal search file"
-            print rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list
+            print ("problem with finding the reciprocal search file")
+            print (rec_search.rstrip("/")+"/"+b.split("/")[-1]+"_reciprocal.blast", rec_list)
             sys.exit()
     else:
         rec_out = None
@@ -1777,11 +1776,11 @@ for b in blastlist:
 
     debugfile.close()
 
-print >> debugfile_generic, len(warninglist)
+print (len(warninglist), file = debugfile_generic)
 for w in warninglist:
-    print >> debugfile_generic, w
+    print (w, file = debugfile_generic)
 
-print >> debugfile_generic, "done"
+print ("done", file = debugfile_generic)
 debugfile_generic.close()
 
-print "done"
+print ("done")
