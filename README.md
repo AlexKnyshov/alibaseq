@@ -77,7 +77,7 @@ bash blast_wrapper.sh ./baits_folder/ assembly.fasta 1e-10 dc-megablast 1 n
 
 Then run ALiBaSeq:
 ```
-python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta.blast \
+python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
  -e 1e-10 --is --amalgamate-hits
 ```
 ##### With a reciprocal search
@@ -231,7 +231,7 @@ bash blast_wrapper.sh ./baits_folder/ assembly.fasta 1e-10 tblastx 1 n
 
 Then run ALiBaSeq:
 ```
-python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta.blast \
+python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
  -e 1e-10 --is --amalgamate-hits --ac tdna-tdna
 ```
 ##### With a reciprocal search
@@ -359,6 +359,57 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 -e 1e-10 --is --amalgamate-hits -r blast_results -R reference.fasta.blast \
 --ac tdna-tdna --acr tdna-tdna
 ```
+
+
+### HMMER profiles
+
+#### Single sample DNA-based example with reciprocal search
+
+Perform the forward search
+```
+> assembly.fasta.hmmer
+for f in ./hmmer_profiles/*.hmm
+do
+	hmmsearch --cpu 1 -E 1e-10 --tformat fasta --domtblout temp.hmmer $f assembly.fasta
+	cat temp.hmmer >> assembly.fasta.hmmer
+done
+rm temp.hmmer
+```
+Create a blast database for the reference sample
+```
+makeblastdb -in reference.fasta -dbtype nucl -parse_seqids
+```
+Search baits vs the reference sample, assuming that is the bait donor
+```
+blastn -query baits.fas -db reference.fasta -outfmt 6 \
+-out reference.fasta.blast -num_threads 1
+```
+BED file can be used if the locations of bait regions are known
+
+For the RBH check, the sample assembly needs to be searched against the reference assembly (or proteome). Since it takes longer and, as opposed to an OrthoMCL type orthology prediction, only sample contigs that had hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. If tblastx search takes too long, or requires a lot of resources (typically only for large and highly contiguous assembly), a dc-megablast search can be performed instead.
+```
+bash reciprocal_search.sh assembly.fasta.hmmer assembly.fasta \
+reference.fasta tblastx 1 n reciprocal_get_contigs.py
+```
+Adjust the number of threads appropriately
+
+Then run ALiBaSeq:
+```
+python alibaseq.py -x a -f S -b assembly.fasta.hmmer -t assembly.fasta \
+-e 1e-10 --is --amalgamate-hits -r assembly.fasta.hmmer_reciprocal.blast \
+-R reference.fasta.blast --bt hmmer15 --acr tdna-tdna
+```
+
+#### More HMMER examples, including protein search here
+
+<details>
+<summary>test</summary>
+<p>
+
+test1
+
+</p>
+</details>
 
 
 ## Other features and parameter description
