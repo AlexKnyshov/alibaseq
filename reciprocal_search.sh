@@ -3,7 +3,7 @@ if [[ $1 == "" ]]
 then
 	echo "########################################"
 	echo "arguments"
-	echo "\$1 folder with blast / hmm files"
+	echo "\$1 folder with blast / hmm / lastz files"
 	echo "\$2 path to assemblies"
 	echo "\$3 path to reference database"
 	echo "\$4 command: tblastx, blastn, etc."
@@ -31,7 +31,13 @@ else
 	then
 	    echo "single sample option selected"
 		echo "extract contigs"
-		cut -f2 $1 | sort | uniq > contigs_to_extract.txt
+		if [[ ${1##*.} == "hmmer" ]]
+		then
+			cut -f1 $1 | sort | uniq > contigs_to_extract.txt
+		else
+			cut -f2 $1 | sort | uniq > contigs_to_extract.txt
+		fi
+		# cut -f2 $1 | sort | uniq > contigs_to_extract.txt
 		python $7 contigs_to_extract.txt $2
 		$prog -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
 		rm contigs_to_extract.txt extracted_contigs.fas
@@ -41,11 +47,23 @@ else
 	  	do
 	  		echo "processing sample" $sample 
 	  		echo "get contig names"
-	  		cut -f2 $1/$sample".blast" | sort | uniq > contigs_to_extract.txt
+	  		if [[ -f $1/$sample".hmmer" ]]
+	  		then
+    			cut -f1 $1/$sample".hmmer" | sort | uniq > contigs_to_extract.txt
+    			outname=$1/$sample".hmmer_reciprocal.blast"
+    		elif [[ -f $1/$sample".lastz" ]]
+    		then
+    			cut -f2 $1/$sample".lastz" | sort | uniq > contigs_to_extract.txt
+    			outname=$1/$sample".lastz_reciprocal.blast"
+    		else
+    			cut -f2 $1/$sample".blast" | sort | uniq > contigs_to_extract.txt
+    			outname=$1/$sample".blast_reciprocal.blast"
+    		fi
+	  		# cut -f2 $1/$sample".blast" | sort | uniq > contigs_to_extract.txt
 	  		echo "get contigs"
 	  		python $7 contigs_to_extract.txt $2/$sample
 	  		echo "run blast"
-	  		$prog -db $3 -query extracted_contigs.fas -out $1/$sample".blast_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
+	  		$prog -db $3 -query extracted_contigs.fas -out $outname -outfmt 6 -num_threads $5 -evalue 0.0001
 	  		rm contigs_to_extract.txt extracted_contigs.fas
 		done < $8
 	fi
