@@ -57,7 +57,9 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 
 #### Single sample
 
-##### Without reciprocal search
+<details>
+<summary>##### Without reciprocal search</summary>
+<p>
 
 Create a blast database
 ```
@@ -80,7 +82,13 @@ Then run ALiBaSeq:
 python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
  -e 1e-10 --is --amalgamate-hits
 ```
-##### With a reciprocal search
+
+</p>
+</details>
+
+<details>
+<summary>##### With a reciprocal search</summary>
+<p>
 
 Create a blast database for the sample
 ```
@@ -108,7 +116,8 @@ BED file can be used if the locations of bait regions are known
 
 For the RBH check, the sample assembly needs to be searched against the reference assembly (or proteome). Since it takes longer and, as opposed to an OrthoMCL type orthology prediction, only sample contigs that had hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. This can be done as follows:
 ```
-bash reciprocal_search.sh assembly.fasta.blast assembly.fasta reference.fasta dc-megablast 1 n reciprocal_get_contigs.py
+bash reciprocal_search.sh assembly.fasta.blast assembly.fasta \
+reference.fasta dc-megablast 1 n reciprocal_get_contigs.py
 ```
 Adjust the number of threads appropriately
 
@@ -119,10 +128,14 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 -R reference.fasta.blast
 ```
 
+</p>
+</details>
+
 #### Multiple samples
 
-
-##### Without reciprocal search
+<details>
+<summary>##### Without reciprocal search</summary>
+<p>
 
 For a group of files, located in the same folder, the dbs can be created like this
 ```
@@ -159,7 +172,12 @@ python alibaseq.py -x a -f M -b ./blast_results/ -t ./folder_with_assemblies/ \
 -e 1e-10 --is --amalgamate-hits
 ```
 
-##### With a reciprocal search
+</p>
+</details>
+
+<details>
+<summary>##### With a reciprocal search</summary>
+<p>
 
 For a group of files, located in the same folder, the dbs can be created like this
 ```
@@ -205,13 +223,18 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 -e 1e-10 --is --amalgamate-hits -r blast_results -R reference.fasta.blast
 ```
 
+</p>
+</details>
+
 ### Variable baits / genetically distant samples - Protein-based search
 
 DNA baits are assumed. If baits are protein, replace tblastx commands below with tblastn
 
 #### Single sample
 
-##### Without reciprocal search
+<details>
+<summary>##### Without reciprocal search</summary>
+<p>
 
 Create a blast database
 ```
@@ -234,7 +257,13 @@ Then run ALiBaSeq:
 python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
  -e 1e-10 --is --amalgamate-hits --ac tdna-tdna
 ```
-##### With a reciprocal search
+
+</p>
+</details>
+
+<details>
+<summary>##### With a reciprocal search</summary>
+<p>
 
 Create a blast database for the sample
 ```
@@ -262,7 +291,8 @@ BED file can be used if the locations of bait regions are known
 
 For the RBH check, the sample assembly needs to be searched against the reference assembly (or proteome). Since it takes longer and, as opposed to an OrthoMCL type orthology prediction, only sample contigs that had hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. If tblastx search takes too long, or requires a lot of resources (typically only for large and highly contiguous assembly), a dc-megablast search can be performed instead.
 ```
-bash reciprocal_search.sh assembly.fasta.blast assembly.fasta reference.fasta tblastx 1 n reciprocal_get_contigs.py
+bash reciprocal_search.sh assembly.fasta.blast assembly.fasta \
+reference.fasta tblastx 1 n reciprocal_get_contigs.py
 ```
 Adjust the number of threads appropriately
 
@@ -273,10 +303,14 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 -R reference.fasta.blast --ac tdna-tdna --acr tdna-tdna
 ```
 
+</p>
+</details>
+
 #### Multiple samples
 
-
-##### Without reciprocal search
+<details>
+<summary>##### Without reciprocal search</summary>
+<p>
 
 For a group of files, located in the same folder, the dbs can be created like this
 ```
@@ -313,7 +347,12 @@ python alibaseq.py -x a -f M -b ./blast_results/ -t ./folder_with_assemblies/ \
 -e 1e-10 --is --amalgamate-hits --ac tdna-tdna
 ```
 
-##### With a reciprocal search
+</p>
+</details>
+
+<details>
+<summary>##### With a reciprocal search</summary>
+<p>
 
 For a group of files, located in the same folder, the dbs can be created like this
 ```
@@ -360,10 +399,14 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 --ac tdna-tdna --acr tdna-tdna
 ```
 
+</p>
+</details>
 
 ### HMMER profiles
 
-#### Single sample DNA-based example with reciprocal search
+<details>
+<summary>#### Single sample DNA-based example with reciprocal search</summary>
+<p>
 
 Perform the forward search
 ```
@@ -400,17 +443,28 @@ python alibaseq.py -x a -f S -b assembly.fasta.hmmer -t assembly.fasta \
 -R reference.fasta.blast --bt hmmer15 --acr tdna-tdna
 ```
 
-#### More HMMER examples, including protein search here
-
-<details>
-<summary>test</summary>
-<p>
-
-test1
-
 </p>
 </details>
 
+<details>
+<summary>#### HMMER protein search</summary>
+<p>
+
+We highly recommend using the `--domtblout` output format of HMMER, since it provides detailed information about domains detected (for the purposes of alibaseq, those are equivalent to HSP in BLAST and LASTZ).
+
+The forward search can be performed as follows:
+```
+> assembly.fasta.hmmer
+for f in ./hmmer_profiles/*.hmm
+do
+	hmmsearch --cpu 1 -E 1e-10 --tformat fasta --domtblout temp.hmmer $f assembly.fasta
+	cat temp.hmmer >> assembly.fasta.hmmer
+done
+rm temp.hmmer
+```
+
+</p>
+</details>
 
 ## Other features and parameter description
 
