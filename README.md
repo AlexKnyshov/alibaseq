@@ -408,11 +408,36 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 <summary>Single sample DNA-based example without a reciprocal search</summary>
 <p>
 
-WIP
+We highly recommend using the `--domtblout` output format of HMMER whenever possible, since it provides detailed information about domains detected (for the purposes of alibaseq, those are equivalent to HSP in BLAST and LASTZ).
+
+Perform the forward search
+```
+> assembly.fasta.hmmer
+for f in ./hmmer_profiles/*.hmm
+do
+	hmmsearch --cpu 1 -E 1e-10 --tformat fasta --domtblout temp.hmmer $f assembly.fasta
+	cat temp.hmmer >> assembly.fasta.hmmer
+done
+rm temp.hmmer
+```
+
+Then run ALiBaSeq, domain format of HMMER corresponds to `--bt hmmer22` option in ALiBaSeq:
+```
+python alibaseq.py -x a -f S -b assembly.fasta.hmmer -t assembly.fasta \
+-e 1e-10 --is --amalgamate-hits --bt hmmer15
+```
 
 </p>
 </details>
 
+<details>
+<summary>Single sample protein-based example without a reciprocal search</summary>
+<p>
+
+WIP
+
+</p>
+</details>
 
 ## Other features and parameter description
 
