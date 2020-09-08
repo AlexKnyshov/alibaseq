@@ -58,7 +58,7 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 #### Single sample
 
 <details>
-<summary>##### Without reciprocal search</summary>
+<summary>Without reciprocal search</summary>
 <p>
 
 Create a blast database
@@ -87,7 +87,7 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 </details>
 
 <details>
-<summary>##### With a reciprocal search</summary>
+<summary>With a reciprocal search</summary>
 <p>
 
 Create a blast database for the sample
@@ -134,7 +134,7 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 #### Multiple samples
 
 <details>
-<summary>##### Without reciprocal search</summary>
+<summary>Without reciprocal search</summary>
 <p>
 
 For a group of files, located in the same folder, the dbs can be created like this
@@ -176,7 +176,7 @@ python alibaseq.py -x a -f M -b ./blast_results/ -t ./folder_with_assemblies/ \
 </details>
 
 <details>
-<summary>##### With a reciprocal search</summary>
+<summary>With a reciprocal search</summary>
 <p>
 
 For a group of files, located in the same folder, the dbs can be created like this
@@ -233,7 +233,7 @@ DNA baits are assumed. If baits are protein, replace tblastx commands below with
 #### Single sample
 
 <details>
-<summary>##### Without reciprocal search</summary>
+<summary>Without reciprocal search</summary>
 <p>
 
 Create a blast database
@@ -262,7 +262,7 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 </details>
 
 <details>
-<summary>##### With a reciprocal search</summary>
+<summary>With a reciprocal search</summary>
 <p>
 
 Create a blast database for the sample
@@ -309,7 +309,7 @@ python alibaseq.py -x a -f S -b assembly.fasta.blast -t assembly.fasta \
 #### Multiple samples
 
 <details>
-<summary>##### Without reciprocal search</summary>
+<summary>Without reciprocal search</summary>
 <p>
 
 For a group of files, located in the same folder, the dbs can be created like this
@@ -351,7 +351,7 @@ python alibaseq.py -x a -f M -b ./blast_results/ -t ./folder_with_assemblies/ \
 </details>
 
 <details>
-<summary>##### With a reciprocal search</summary>
+<summary>With a reciprocal search</summary>
 <p>
 
 For a group of files, located in the same folder, the dbs can be created like this
@@ -405,8 +405,10 @@ python alibaseq.py -x a -f M -b blast_results -t folder_with_assemblies \
 ### HMMER profiles
 
 <details>
-<summary>#### Single sample DNA-based example with reciprocal search</summary>
+<summary>Single sample DNA-based example without a reciprocal search</summary>
 <p>
+
+We highly recommend using the `--domtblout` output format of HMMER whenever possible, since it provides detailed information about domains detected (for the purposes of alibaseq, those are equivalent to HSP in BLAST and LASTZ).
 
 Perform the forward search
 ```
@@ -418,39 +420,21 @@ do
 done
 rm temp.hmmer
 ```
-Create a blast database for the reference sample
-```
-makeblastdb -in reference.fasta -dbtype nucl -parse_seqids
-```
-Search baits vs the reference sample, assuming that is the bait donor
-```
-blastn -query baits.fas -db reference.fasta -outfmt 6 \
--out reference.fasta.blast -num_threads 1
-```
-BED file can be used if the locations of bait regions are known
 
-For the RBH check, the sample assembly needs to be searched against the reference assembly (or proteome). Since it takes longer and, as opposed to an OrthoMCL type orthology prediction, only sample contigs that had hits to the bait sequences will be considered, we suggest the following shortcut: only contigs appeared in the forward search are reciprocally searched against the reference taxon. If tblastx search takes too long, or requires a lot of resources (typically only for large and highly contiguous assembly), a dc-megablast search can be performed instead.
-```
-bash reciprocal_search.sh assembly.fasta.hmmer assembly.fasta \
-reference.fasta tblastx 1 n reciprocal_get_contigs.py
-```
-Adjust the number of threads appropriately
-
-Then run ALiBaSeq:
+Then run ALiBaSeq, domain format of HMMER corresponds to `--bt hmmer22` option in ALiBaSeq:
 ```
 python alibaseq.py -x a -f S -b assembly.fasta.hmmer -t assembly.fasta \
--e 1e-10 --is --amalgamate-hits -r assembly.fasta.hmmer_reciprocal.blast \
--R reference.fasta.blast --bt hmmer15 --acr tdna-tdna
+-e 1e-10 --is --amalgamate-hits --bt hmmer15
 ```
 
 </p>
 </details>
 
 <details>
-<summary>#### HMMER protein search</summary>
+<summary>Single sample protein-based example without a reciprocal search</summary>
 <p>
 
-We highly recommend using the `--domtblout` output format of HMMER, since it provides detailed information about domains detected (for the purposes of alibaseq, those are equivalent to HSP in BLAST and LASTZ).
+We highly recommend using the `--domtblout` output format of HMMER whenever possible, since it provides detailed information about domains detected (for the purposes of alibaseq, those are equivalent to HSP in BLAST and LASTZ).
 
 The forward search can be performed as follows:
 ```
@@ -461,6 +445,12 @@ do
 	cat temp.hmmer >> assembly.fasta.hmmer
 done
 rm temp.hmmer
+```
+
+Then run ALiBaSeq, domain format of HMMER corresponds to `--bt hmmer22` option in ALiBaSeq:
+```
+python alibaseq.py -x a -f S -b assembly.fasta.hmmer -t assembly.fasta \
+-e 1e-10 --is --amalgamate-hits --bt hmmer22
 ```
 
 </p>
@@ -604,13 +594,15 @@ Each line of the log corresponds to a bait sequence and its extracted match from
 
 *What kinds of datasets are suitable for AliBaSeq?*
 
-Any kind of genetic datasets in which you want to analyse a subset of loci for a phylogeny. The subset may include predetermined single copy orthologous genes (BUSCO or OrthoDB), predetermined genes for which probes are supposed to enrich loci (targeted capture, UCE or AHE approaches) or even other datasets in which you want to recover a set of known genes for new taxa for further analysis (e.g., like salivary proteins?). 
+Any kind of genetic datasets in which you want to analyse a subset of loci for a phylogeny. The subset may include predetermined single copy orthologous genes (BUSCO or OrthoDB), predetermined genes for which probes are supposed to enrich loci (targeted capture, UCE or AHE approaches) or even other datasets in which you want to recover a set of known genes for new taxa for further analysis. 
 
 It can be used on transcriptomic, low coverage or well-assembled genomic data or sequence capture assemblies. It is especially useful for combining these different types of data for a comprehensive phylogenetic analysis. It is also particularly robust for recovering genes across large phylogenetic distances unlike many other programs.
 
 *What is the best search tool (BLAST/HMMER/LASTZ) to use for my dataset before using AliBaSeq?* 
 
-It depends, HMMEr is better at extremely divergent sequences but blastx and tblastx also work well with discontinuous megablast also working very well and very fast etc. 
+If baits are similar enough to the samples, DNA-based searches should be used, as they are fast and lack the risk of increased false-positive results. Tools like blastn, blastn -task dc-megablast, nhmmer, hmmsearch with DNA profiles, and LASTZ can all be used, with BLAST being one of the fastest and easiest to set up and use.
+
+If baits are divergent from the samples, DNA-based tools are suggested to be tried first, but it is likely that even discontinuous megablast might not give enough hits. In this case, or when only protein bait sequences are available, protein-based searches need to be conducted. The easiest options are tblastn (if baits are protein) and tblastx (if baits are CDS) searches, they are relatively fast and easy to set up. If multiple bait sequences are desired to be used, for example when looking for difficult loci with large variation even between reference taxa, HMMER profiles can be used instead. DNA-based HMMER search is straightforward to set up. Potein-based search would require producing six-frame-translated copies of sample assemblies, and the search would likely take longer (it runs best if it is possible to MPI-parallelize it as on a compute cluster, the tutorials are coming up...).
 
 *If I want to recover a set of pre-determined loci from newly sequences transcriptomes what default parameters would I use? What parameters might I adjust to get better recovery?*
 
@@ -626,7 +618,7 @@ If the capture targeted shorter regions (e.g., UCE), the same simple procedure a
 
 *What is the best way to assess different parameters I've used to determine which ones work the best in terms of low false positive rates and maximum recovery?*
 
-It is hard to come up with an accurate way to assess the false positive rate for an empirical study, where the true homolog sequence is unknown. But typically false positives manifest themselves in downstream analyses. If false positives are a problem (for example, when using a protein bait on a divergent organism), using the RBH check is highly recommended. For divergent from bait organisms or very low coverage genomes a strict RBH check as well as using tblastx for the reciprocal searches are recommended.
+It is hard to come up with an accurate way to assess the false positive rate for an empirical study, where the true homolog sequence is unknown. But typically false positives manifest themselves in downstream analyses. If false positives are a problem (for example, when using a protein bait on a divergent organism), using the RBH check is highly recommended. For divergent from bait organisms or very low coverage genomes a strict RBH check as well as using tblastx for the reciprocal searches are recommended. Additionally, it is recommended to experiment with the scoring options (`-m` and `--rescale-metric`, `--amalgamate-hits`, and `--metric-merge-corr`).
 The recovery may be assessed by the number of hits recovered, as well as by looking at coverage breadth of loci at the alignment stage. If recovery is not sufficient, while false-positives are not a problem, lowering the search sequence similarity thresholds as well as using a relaxed RBH check may help. If recovery is patchy from exon to exon, `--hit-ovlp` might need to be increased. If it is hard to get a good balance between the recovery and the false positive rates, assuming the sample was sequenced well, the bait sequence set may need to be adjusted (use more similar baits, avoid loci with known paralogs)
 
 *I work on a non-model organism and I have a very low coverage genome but I want to include it in a phylogenetic analysis with some well relatively well sequenced trancriptomes from the same kind of organism without any annotations. What is the best way to test out the program to see if it works for me?*
