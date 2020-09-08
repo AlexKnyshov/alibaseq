@@ -16,7 +16,7 @@ Alignment-Based Sequence extraction
 
 Alexander Knyshov, Eric R.L. Gordon, Christiane Weirauch (2020). New alignment-based sequence extraction software (ALiBaSeq) and its utility for deep level phylogenetics. bioRxiv 2020.04.27.064790; doi: https://doi.org/10.1101/2020.04.27.064790
 
-The manuscript is based on the 1.0 version, available here: https://github.com/AlexKnyshov/alibaseq/releases/tag/v1.0
+The manuscript is based on the 1.1 version, available here: https://github.com/AlexKnyshov/alibaseq/releases/tag/v1.0
 
 ## Description
 The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST, HMMER, or LASTZ search tab-delimited output tables and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
