@@ -23,7 +23,7 @@ The core of the software - `alibaseq.py` - is designed to retrieve homologous re
 The following assumptions were used when developing the script:
 * Technical
 	- input (forward) search table has locus name or locus file name in the query column and contig name in the hit column
-	- **in case of multiple samples processed at once**, input forward tables (baits against samples) located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST, `.hmmer` for HMMER, `.lastz` for LASTZ. Reciprocal search tables (samples against the reference sample) have suffix `_reciprocal.blast` appended to forward search table name. Assemblies have extension `.fasta`. See examples below.
+	- **in case of multiple samples processed at once**, input forward tables (baits against samples) located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST, `.hmmer` for HMMER, `.lastz` for LASTZ. Reciprocal search tables (samples against the reference sample) have suffix `_reciprocal.blast` appended to forward search table name, and located in the same or different folder as the forward search tables. Assemblies have extension `.fasta`. See examples below.
 	- For the reference search table (baits against reference sample) BLAST or BED formats are supported.
 	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with `.fas` extension
 * Methodological
