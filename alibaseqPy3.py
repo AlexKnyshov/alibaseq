@@ -1637,7 +1637,11 @@ messagefunc("contignum parameter: "+str(contignum), cols, debugfile_generic, Fal
 if filefolder == "M":
     #reading the blastfile
     if bt == "blast":
-        blastlist = glob.glob(blastfilearg+"/*.blast")
+        blastlist = []
+        preblastlist = glob.glob(blastfilearg+"/*.blast")
+        for blastfile in preblastlist:
+            if "_reciprocal.blast" not in blastfile:
+                blastlist.append(blastfile)
     elif bt == "lastz":
         blastlist = glob.glob(blastfilearg+"/*.lastz")
     else:
