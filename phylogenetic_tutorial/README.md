@@ -5,7 +5,7 @@ Python 2 or 3, Biopython, NCBI BLAST
 
 ## Description
 
-Four UCE loci of the Hemiptera 2.7K version 1 kit are being retrieved from 3 samples: a WGS sample (based on *Rhodnius prolixus* genome), an RNA-seq sample (based on *Lygus hesperus* transcriptome), and a hybrid capture sample (based on *Rhodnius robustus* UCE capture). Retrieved sequences are to be appended to the bait sequences used for search, which were derived from the fourth genome (based on *Cimex lectularius* genome). Resulting FASTA files can be used for downstream steps (alignment, filtering / trimming, phylogenetic reconstruction).
+Four UCE loci of the Hemiptera 2.7K version 1 kit are being retrieved from 3 samples: a WGS sample (based on *Rhodnius prolixus* genome), an RNA-seq sample (based on *Lygus hesperus* transcriptome), and a hybrid capture sample (based on *Rhodnius robustus* UCE capture). Retrieved sequences are to be appended to the bait sequences used for search, which were derived from the 4th sample (based on *Cimex lectularius* genome). Resulting FASTA files containing sequences of 4 samples can be used for downstream steps (alignment, filtering / trimming, phylogenetic reconstruction).
 
 ## Tutorial
 
