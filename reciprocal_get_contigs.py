@@ -14,7 +14,8 @@ with open(fastafilename) as fastafile:
 	seqs = SeqIO.parse(fastafile, "fasta")
 	for seq in seqs:
 		if seq.id in query:
-			print >> outfile, ">"+seq.id+"\n"+seq.seq
+			SeqIO.write(seq, outfile, "fasta")
+			# print >> outfile, ">"+seq.id+"\n"+seq.seq
 			query.remove(seq.id)
 		if len(query) == 0:
 			break

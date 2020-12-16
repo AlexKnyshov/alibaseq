@@ -27,6 +27,41 @@ else
 	else
 		prog=$4
 	fi
+
+	pycmd=""
+	if ! command -v python &> /dev/null
+	then
+		if ! command -v python3 &> /dev/null
+		then
+			echo "ERROR: python could not be found"
+		else
+			pyV=$( python3 -V 2>&1 | cut -f2 -d" " | cut -f1 -d.)
+			if [[ $pyV == 3 ]]
+			then
+				echo "python 3 found, executable python3"
+				pycmd="python3"
+			else
+				echo "ERROR: python3 executable has version 2"
+			fi
+		fi
+	else
+		pyV=$( python -V 2>&1 | cut -f2 -d" " | cut -f1 -d.)
+		if [[ $pyV == 2 ]]
+		then
+			echo "python 2 found, executable python"
+			pycmd="python"
+		elif [[ $pyV == 3 ]]
+		then
+			echo "python 3 found, executable python"
+			pycmd="python"
+		else
+			echo "ERROR: python version check"
+		fi
+	fi
+
+
+
+
 	if [ -z "$8" ]
 	then
 	    echo "single sample option selected"
@@ -38,7 +73,7 @@ else
 			cut -f2 $1 | sort | uniq > contigs_to_extract.txt
 		fi
 		# cut -f2 $1 | sort | uniq > contigs_to_extract.txt
-		python $7 contigs_to_extract.txt $2
+		$pycmd $7 contigs_to_extract.txt $2
 		$prog -db $3 -query extracted_contigs.fas -out $1"_reciprocal.blast" -outfmt 6 -num_threads $5 -evalue 0.0001
 		rm contigs_to_extract.txt extracted_contigs.fas
 	else
@@ -61,7 +96,7 @@ else
     		fi
 	  		# cut -f2 $1/$sample".blast" | sort | uniq > contigs_to_extract.txt
 	  		echo "get contigs"
-	  		python $7 contigs_to_extract.txt $2/$sample
+	  		$pycmd $7 contigs_to_extract.txt $2/$sample
 	  		echo "run blast"
 	  		$prog -db $3 -query extracted_contigs.fas -out $outname -outfmt 6 -num_threads $5 -evalue 0.0001
 	  		rm contigs_to_extract.txt extracted_contigs.fas
