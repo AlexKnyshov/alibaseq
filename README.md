@@ -49,7 +49,7 @@ git clone https://github.com/AlexKnyshov/alibaseq.git
 
 ### Phylogenetic tutorial
 
-##### Please see [this folder](https://github.com/AlexKnyshov/alibaseq/tree/master/phylogenetic_tutorial)
+##### Please see [this folder](https://github.com/AlexKnyshov/alibaseq/tree/master/phylogenetic_tutorial) for a tutorial with a test dataset provided
 
 ### Requirements:
 - bait sequences in a single file or in multiple files, one file per locus (can contain multiple sequences); for multiple files, an extension `.fas` is assumed for the bait files.
