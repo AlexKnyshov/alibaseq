@@ -1,10 +1,9 @@
 # ALiBaSeq tutorial - phylogenetic dataset
 
 ### Table of Contents
-* [Dependencies](https://github.com/AlexKnyshov/alibaseq/test#dependencies)  
-* [How to run the test](https://github.com/AlexKnyshov/alibaseq/test#how-to-run-the-test)  
-* [Contents of the test](https://github.com/AlexKnyshov/alibaseq/test#contents-of-the-test)  
-* [Information on test baits](https://github.com/AlexKnyshov/alibaseq/test#information-on-test-baits)  
+* [Dependencies](https://github.com/AlexKnyshov/alibaseq/phyogenetic_tutorial#dependencies)  
+* [Description](https://github.com/AlexKnyshov/alibaseq/phyogenetic_tutorial#description)  
+* [Tutorial](https://github.com/AlexKnyshov/alibaseq/phyogenetic_tutorial#tutorial)  
 
 ## Dependencies
 Python 2 or 3, Biopython, NCBI BLAST

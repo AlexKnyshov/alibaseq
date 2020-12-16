@@ -2,10 +2,10 @@
 Based on *R. prolixus* genome
 
 ### Table of Contents
-* [Dependencies](https://github.com/AlexKnyshov/alibaseq/test#dependencies)  
-* [How to run the test](https://github.com/AlexKnyshov/alibaseq/test#how-to-run-the-test)  
-* [Contents of the test](https://github.com/AlexKnyshov/alibaseq/test#contents-of-the-test)  
-* [Information on test baits](https://github.com/AlexKnyshov/alibaseq/test#information-on-test-baits)  
+* [Dependencies](https://github.com/AlexKnyshov/alibaseq/loci_type_tutorial#dependencies)  
+* [How to run the test](https://github.com/AlexKnyshov/alibaseq/loci_type_tutorial#how-to-run-the-test)  
+* [Contents of the test](https://github.com/AlexKnyshov/alibaseq/loci_type_tutorial#contents-of-the-test)  
+* [Information on test baits](https://github.com/AlexKnyshov/alibaseq/loci_type_tutorial#information-on-test-baits)  
 
 ## Dependencies
 Python 2 or 3, Biopython, NCBI BLAST
