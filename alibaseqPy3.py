@@ -36,7 +36,7 @@ optional.add_argument('--translate', dest='trans_out', action='store_true', help
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="hit_ovlp", type=float, default=0.1)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="ctg_ovlp", type=float, default=0.2)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, >= 1 in bp, or relative 0 < N < 1',dest="recip_ovlp", type=float, default=10)
-optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15', "lastz"], help='alignment table type',dest="bt", default="blast")
+optional.add_argument('--bt', choices=['blast','hmmer22', 'hmmer18', 'hmmer15', "lastz", "sam", "bam"], help='alignment table type',dest="bt", default="blast")
 optional.add_argument('--btR', choices=['blast','bed'], help='reference alignment table type',dest="btR", default="blast")
 optional.add_argument('--ac', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='alignment coordinate type',dest="ac", default="dna-dna")
 optional.add_argument('--acr', choices=['dna-dna', 'tdna-aa', 'aa-tdna', 'aa-aa', 'tdna-tdna'], help='reciprocal alignment coordinate type',dest="acr", default="dna-dna")
@@ -56,6 +56,7 @@ optional.add_argument('--max-gap', metavar='N', help='max gap between HSP region
 optional.add_argument('--cname', dest='cname', action='store_true', help='append original contig name to output sequence name', default=False)
 optional.add_argument('--both-strands', dest='bstrands', choices=['1','0'], help='allow both strands of the same contig region to be considered', default='1')
 optional.add_argument('--srt', metavar='N', help='score ratio threshold, greater which the hits considered be close matches',dest="srt", type=float, default=0.9)
+optional.add_argument('--samScore', metavar='metric', help='metric to use for scoring matches',dest="samscore", default="MAPQ")
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -77,6 +78,14 @@ else:
     elif bt == "hmmer15":
         if vars(args)["ac"] != "dna-dna":
             print ("hmmer15 tables are only for DNA vs DNA search, option --ac ignored")
+        ac = "dna-dna"
+        extractiontype = vars(args)["extractiontype"]
+    elif bt == "sam" or bt == "bam":
+        print ("SAM / BAM input, importing Pysam")
+        import pysam
+        samscore = vars(args)["samscore"]
+        if vars(args)["ac"] != "dna-dna":
+            print ("SAM / BAM files are only for DNA vs DNA search, option --ac ignored")
         ac = "dna-dna"
         extractiontype = vars(args)["extractiontype"]
     else:
@@ -161,10 +170,13 @@ else:
     flanks = vars(args)["flanks"]
     output_dir = vars(args)["output"]
     logsuffix = vars(args)["logsuffix"]
-    if vars(args)["metric"] == "e/b-i":
-        metric = "e/b-i"
+    if bt == "sam" or bt == "bam":
+        metric = [1,0,2]
     else:
-        metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
+        if vars(args)["metric"] == "e/b-i":
+            metric = "e/b-i"
+        else:
+            metric = [int(x) for x in vars(args)["metric"].replace("e","0").replace("b","1").replace("i","2").split("-")]
     metricR = vars(args)["metricR"]
     metricC = vars(args)["metricC"]
     ref_hs = vars(args)["ref_hs"]
@@ -493,6 +505,46 @@ def rowfunclastz(row):
     else:
         query_b = False
     return [target_f, target_r, target_b, query_f, query_r, query_b, 0, float(row[0]), float(row[14])]
+
+#function for parsing SAM / BAM formats
+def readsamformat(b, isbinary, bitscore1, samscore1, cols, debugfile):
+    if isbinary:
+        rmode = 'rb'
+    else:
+        rmode = 'r'
+    messagefunc("processing "+b, cols, debugfile, False)
+    returndict = {}
+    linecounter = 0
+    samfile = pysam.AlignmentFile(b, rmode, check_sq=False, ignore_truncation=True)
+    for read in samfile.fetch():
+        if read.is_unmapped is False:
+            qname = read.query_name
+            tname = read.reference_name 
+            query_b = not read.is_reverse
+            query_f = read.query_alignment_start+1
+            query_r = read.query_alignment_end
+            target_f = read.reference_start+1
+            target_r = read.reference_end
+            if samscore1 == "MAPQ":
+                quality = read.mapping_quality
+            else:
+                tags = dict(read.get_tags())
+                if samscore1 in tags:
+                    quality = tags[samscore1]
+                else:
+                    messagefunc("SAM / BAM quality metric specified is not found", cols, debugfile, False)
+                    sys.exit()
+            rowval = [target_f, target_r, True, query_f, query_r, query_b, 0, float(quality), 100]
+            if tname in returndict:
+                if qname in returndict[tname]:
+                    returndict[tname][qname][linecounter] = rowval
+                else:
+                    returndict[tname][qname] = {linecounter: rowval}
+            else:
+                returndict[tname] = {qname: {linecounter: rowval}}
+        linecounter += 1
+    samfile.close()
+    return returndict
 
 #first main function
 def target_processor(inpdict, local_rec, metric, metricR, hit_overlap, recip_overlap, ac1, run_hs1, max_gap1, amlghitscore, metricC,bstrands1, cols, debugfile):
@@ -1644,6 +1696,10 @@ if filefolder == "M":
                 blastlist.append(blastfile)
     elif bt == "lastz":
         blastlist = glob.glob(blastfilearg+"/*.lastz")
+    elif bt == "sam":
+        blastlist = glob.glob(blastfilearg+"/*.sam")
+    elif bt == "bam":
+        blastlist = glob.glob(blastfilearg+"/*.bam")
     else:
         blastlist = glob.glob(blastfilearg+"/*.hmmer")
     if not dry_run:
@@ -1707,6 +1763,10 @@ for b in blastlist:
         output = readblastfilefunc(b, evalue, bitscore, identity, True, ac, True, cols, debugfile) #output 0 is query, 1 is target
     elif bt == "lastz":
         output = readlastzfilefunc(b, bitscore, identity, True, True, cols, debugfile) #output 0 is query, 1 is target
+    elif bt == "sam":
+        output = readsamformat(b, False, bitscore, samscore, cols, debugfile)
+    elif bt == "bam":
+        output = readsamformat(b, True, bitscore, samscore, cols, debugfile)
     else:
         output = readhmmerfilefunc(b, evalue, bitscore, bt, ac, hmmerg, cols, debugfile)
     #read reciprocal alignment table
