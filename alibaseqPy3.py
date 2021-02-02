@@ -515,7 +515,7 @@ def readsamformat(b, isbinary, bitscore1, samscore1, cols, debugfile):
     messagefunc("processing "+b, cols, debugfile, False)
     returndict = {}
     linecounter = 0
-    samfile = pysam.AlignmentFile(b, rmode, check_sq=False, ignore_truncation=True)
+    samfile = pysam.AlignmentFile(b, rmode)
     for read in samfile.fetch():
         if read.is_unmapped is False:
             qname = read.query_name
