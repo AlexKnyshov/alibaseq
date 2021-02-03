@@ -19,11 +19,11 @@ Alexander Knyshov, Eric R.L. Gordon, Christiane Weirauch (2020). New alignment-b
 The manuscript is based on the 1.1 version, available here: https://github.com/AlexKnyshov/alibaseq/releases/tag/v1.1
 
 ## Description
-The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST, HMMER, or LASTZ search tab-delimited output tables and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
+The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST, HMMER, or LASTZ search tab-delimited output tables or SAM / BAM alignment files and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
 The following assumptions were used when developing the script:
 * Technical
 	- input (forward) search table has locus name or locus file name in the query column and contig name in the hit column
-	- **in case of multiple samples processed at once**, input forward tables (baits against samples) located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST, `.hmmer` for HMMER, `.lastz` for LASTZ. Reciprocal search tables (samples against the reference sample) have suffix `_reciprocal.blast` appended to forward search table name, and located in the same or different folder as the forward search tables. Assemblies have extension `.fasta`. See examples below.
+	- **in case of multiple samples processed at once**, input forward tables (baits against samples) located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST, `.hmmer` for HMMER, `.lastz` for LASTZ, `.sam` for SAM, `bam` for BAM. Reciprocal search tables (samples against the reference sample) have suffix `_reciprocal.blast` appended to forward search table name, and located in the same or different folder as the forward search tables. Assemblies have extension `.fasta`. See examples below.
 	- For the reference search table (baits against reference sample) BLAST or BED formats are supported.
 	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with `.fas` extension
 * Methodological
@@ -37,7 +37,7 @@ The following assumptions were used when developing the script:
 
 
 ## Dependencies
-Python 2 or 3, Biopython
+Python 2 or 3, Biopython, Pysam (only if SAM / BAM used as input)
 
 ## Installation
 Clone the repository like this:
@@ -463,7 +463,7 @@ option `-R` specifies path to the query search against the reference assembly. (
 
 ### table type
 
-option `--bt` specifies the alignment table type (only for forward searches; reciprocal and reference tables are always parsed as `blast`). `blast` is a standard blast table, `hmmer22` is a --domtblout table of hmmer, `hmmer18` is a protein --tblout table of hmmer, `hmmer15` is a dna --tblout table of hmmer. (default: blast)
+option `--bt` specifies the alignment table type (only for forward searches; reciprocal and reference tables are always parsed as `blast`). `blast` is a standard blast table, `hmmer22` is a --domtblout table of hmmer, `hmmer18` is a protein --tblout table of hmmer, `hmmer15` is a dna --tblout table of hmmer, `lastz` is a Phyluce-style LASTZ output, `sam` is a SAM format, `bam` is a BAM format (default: blast)
 
 option `--ac` specifies the alignment table type. `dna-dna` is default, and has no special effects, except is not allowed to run with `--bt hmmer18` as the latter is a protein table. In `tdna-tdna`, `tdna-aa` and `aa-tdna` overlapping hits are checked for frameshift before joining. When set to `tdna-aa` or `aa-tdna`, coordinates of blast tables are modified accordingly to convert between AA and NT values. In `tdna-aa` and `aa-aa` output sequence translation is not allowed. (default: dna-dna)
 
@@ -500,6 +500,8 @@ option `-m` specifies the order of metrics to be used for discriminating between
 option `--rescale-metric` rescales the metric value by the length of the match (not recommended for most situations since bitscore and evalue already incorporate hit sizes) (default: False)
 
 option `--hmmer-global` - for hmmer22 tables only - uses contig scores instead of domain (hit) scores; do not use in combination with `--amalgamate-hits` (default: False)
+
+option `--samScore` specifies whether the mapping quality (`MAPQ`) or a custom SAM / BAM file attribute (for example, `AS` [alignment score], that is provided by many aligners) is used as a scoring metric (default="MAPQ")
 
 ### hit stitcher
 
