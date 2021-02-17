@@ -17,7 +17,6 @@ else
 	then
 		echo "loading modules"
 		module load ncbi-blast
-		source activate python2std #biocluster specific option. loading biopython basically
 	else 
 		echo "no modules loaded"
 	fi
