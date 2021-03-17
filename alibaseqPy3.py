@@ -545,6 +545,11 @@ def readsamformat(b, isbinary, bitscore1, samscore1, cols, debugfile):
             query_r = read.query_alignment_end
             target_f = read.reference_start+1
             target_r = read.reference_end
+            cigar_stats = read.get_cigar_stats()
+            if cigar_stats[0][7] > 0:
+                ident = float(cigar_stats[0][7]) / (cigar_stats[0][7]+cigar_stats[0][8])*100
+            else:
+                ident = 100.0
             if samscore1 == "MAPQ":
                 quality = read.mapping_quality
             else:
@@ -554,7 +559,7 @@ def readsamformat(b, isbinary, bitscore1, samscore1, cols, debugfile):
                 else:
                     messagefunc("SAM / BAM quality metric specified is not found", cols, debugfile, False)
                     sys.exit()
-            rowval = [target_f, target_r, True, query_f, query_r, query_b, 0, float(quality), 100]
+            rowval = [target_f, target_r, True, query_f, query_r, query_b, 0, float(quality), ident]
             if tname in returndict:
                 if qname in returndict[tname]:
                     returndict[tname][qname][linecounter] = rowval
