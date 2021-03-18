@@ -537,8 +537,8 @@ def readsamformat(b, isbinary, bitscore1, samscore1, cols, debugfile):
     samfile = pysam.AlignmentFile(b, rmode)
     for read in samfile.fetch():
         if read.is_unmapped is False:
-            qname = read.query_name
-            tname = read.reference_name 
+            qname = read.query_name.split(" ")[0]
+            tname = read.reference_name.split(" ")[0]
             query_b = not read.is_reverse
             query_f = read.query_alignment_start+1
             query_r = read.query_alignment_end
