@@ -32,7 +32,7 @@ optional.add_argument('-c', metavar='N', help='number of contigs to extract; if 
 optional.add_argument('--fl', metavar='N', help='flanks on each side in bp',dest="flanks", type=int, default=0)
 optional.add_argument('--lr', dest='local_rec', choices=['none','actual','range'], help='local reciprocator setting', default='range')
 optional.add_argument('--is', dest='interstitch', action='store_true', help='perform contig stitching', default=False)
-optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -x s or -x a)', default=False)
+# optional.add_argument('--translate', dest='trans_out', action='store_true', help='translate output (for -x s or -x a)', default=False)
 optional.add_argument('--hit-ovlp', metavar='N', help='allowed hit overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="hit_ovlp", type=float, default=0.1)
 optional.add_argument('--ctg-ovlp', metavar='N', help='allowed contig overlap on query, >= 1 in bp, or relative 0 < N < 1',dest="ctg_ovlp", type=float, default=0.2)
 optional.add_argument('--recip-ovlp', metavar='N', help='contig overlap on query for reciprocator selection, >= 1 in bp, or relative 0 < N < 1',dest="recip_ovlp", type=float, default=10)
@@ -60,7 +60,7 @@ optional.add_argument('--samScore', metavar='metric', help='metric to use for sc
 optional.add_argument('--dd', dest='dd', choices=['all','none','random'], help='in case hit matches several query with exactly equal score, assign such hit to [all queries / none of the queries / at random to only one]', default='none')
 optional.add_argument('--log-header', dest='loghead', action='store_true', help='add a header to the table-like log files', default=False)
 optional.add_argument('--synteny', dest='syntcheck', choices=['1','0'], help='only stitch hits that are in synteny to query', default='1')
-
+optional.add_argument('-d', metavar='namedelim', help='sample/contigID delimiter, should be a character not encountered in contig or sample names',dest="namedelim", default="|")
 
 if len(sys.argv) == 1:
     parser.print_help()
@@ -106,18 +106,19 @@ else:
         keep_strand = True
     else:
         keep_strand = False
-    if vars(args)["trans_out"]:
-        if extractiontype == "s" or extractiontype == "a":
-            if ac == "aa-aa" or ac == "tdna-aa":
-                print ("should not attempt to translate AA sequence, option --translate ignored")
-                trans_out = False
-            else:
-                trans_out = True
-        else:
-            print ("will only translate exact matches (options -x s or -x a), option --translate ignored")
-            trans_out = False
-    else:
-        trans_out = False
+    # if vars(args)["trans_out"]:
+    #     if extractiontype == "s" or extractiontype == "a":
+    #         if ac == "aa-aa" or ac == "tdna-aa":
+    #             print ("should not attempt to translate AA sequence, option --translate ignored")
+    #             trans_out = False
+    #         else:
+    #             trans_out = True
+    #     else:
+    #         print ("will only translate exact matches (options -x s or -x a), option --translate ignored")
+    #         trans_out = False
+    # else:
+    #     trans_out = False
+    trans_out = False
     
     outM = vars(args)["outM"]
     if vars(args)["targetf"] == None:
@@ -197,7 +198,13 @@ else:
     dd = vars(args)["dd"]
     loghead = vars(args)["loghead"]
     syntcheck = vars(args)["syntcheck"]
-
+    namedelim = vars(args)["namedelim"]
+    if namedelim == "@":
+        print ("@ is reserved, please use other delimiter")
+        sys.exit()
+    elif len(namedelim) != 1:
+        print ("delimiter should be a single character")
+        sys.exit()
 
 dashb = "#"*75
 dash = "-"*50
@@ -902,7 +909,7 @@ def join_chunks(sbctg1, direct1, amlghitscore1, metricC1):
     stitched_hits = []
     for key in sorted(median_query, key=lambda x: median_query[x]):
         if gapstart > 0:
-            stitched_hits.append(start_query[key]-gapstart)
+            stitched_hits.append(start_query[key]-1-gapstart)
         stitched_hits.append([start_target[key], end_target[key], start_query[key], end_query[key], eval_hit[key], bit_hit[key], ident_hit[key]])
         gapstart = end_query[key]
     stitched_sbctg1.append(stitched_hits)
@@ -925,7 +932,7 @@ def join_contigs(inplist):
     end_query_superctg = max(list(end_query[x] for x in end_query))
     for key in sorted(median_query, key=lambda x: median_query[x]):
         if gapstart > 0:
-            returnlist.append(start_query[key]-gapstart)
+            returnlist.append(start_query[key]-1-gapstart)
         returnlist.append([key,target_dict[key]])
         gapstart = end_query[key]
     return [start_query_superctg, end_query_superctg], returnlist
@@ -1512,14 +1519,14 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget
         if cname1 == False or seqname == "none":
             finalseq.id = tname
         else:
-            finalseq.id = tname+"|"+seqname
+            finalseq.id = tname+namedelim+seqname
     elif outM1 == "combined":
         fhandle = open(dir1+"/combined.fas", "a")
         finalseq = SeqRecord(sequence)
         if lentarget == 1:
             finalseq.id = seqname
         else:
-            finalseq.id = tname+"|"+seqname
+            finalseq.id = tname+namedelim+seqname
     finalseq.name =""
     finalseq.description =""
     SeqIO.write(finalseq, fhandle, "fasta")
