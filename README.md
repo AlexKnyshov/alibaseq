@@ -487,7 +487,7 @@ option `-c` specifies the max number of (super)contigs to extract. When set to 0
 
 option `--fl` specifies flanks on each side in bp. This option is only available when `-x` is set to `s` or `b`. (default: 0)
 
-option `--translate` turns on sequence translation (for `-x s` or `-x a`), only works when appropriate `--ac`. (default: False)
+DISABLED ~~option `--translate` turns on sequence translation (for `-x s` or `-x a`), only works when appropriate `--ac`. (default: False)~~
 
 option `--om` specifies the way sequences are output. When set to `query`, sequences are grouped into per query files, when set to `target`, they are grouped into per sample files, and when set to `combined`, all sequences from all tables are extracted into a single file. (default: query)
 
