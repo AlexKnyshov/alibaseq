@@ -14,9 +14,7 @@ Alignment-Based Sequence extraction
 
 ## References
 
-Alexander Knyshov, Eric R.L. Gordon, Christiane Weirauch (2020). New alignment-based sequence extraction software (ALiBaSeq) and its utility for deep level phylogenetics. bioRxiv 2020.04.27.064790; doi: https://doi.org/10.1101/2020.04.27.064790
-
-The manuscript is based on the 1.1 version, available here: https://github.com/AlexKnyshov/alibaseq/releases/tag/v1.1
+Knyshov A, Gordon ERL, Weirauch C. 2021. New alignment-based sequence extraction software (ALiBaSeq) and its utility for deep level phylogenetics. PeerJ 9:e11019 https://doi.org/10.7717/peerj.11019
 
 ## Description
 The core of the software - `alibaseq.py` - is designed to retrieve homologous regions from a FASTA file with contigs (e.g., an NGS read assembly file). The retrieval is done based on reading BLAST, HMMER, or LASTZ search tab-delimited output tables or SAM / BAM alignment files and then searching for the results in an assembly file. Software is designed to compile gene regions for phylogenetic inference (grouping all taxa being processed per locus and appending this data to given loci files), however this is not required and a different output structure can be selected. Optionally, a reverse search (reciprocal best hit check) table and a reference search (baits searched against a complete assembly / proteome of taxon they are derived from) table can be provided.
@@ -26,6 +24,7 @@ The following assumptions were used when developing the script:
 	- **in case of multiple samples processed at once**, input forward tables (baits against samples) located in the same folder, and named exactly as assemblies apart from having the following extensions appended: `.blast` for BLAST, `.hmmer` for HMMER, `.lastz` for LASTZ, `.sam` for SAM, `.bam` for BAM. Reciprocal search tables (samples against the reference sample) have suffix `_reciprocal.blast` appended to forward search table name, and located in the same or different folder as the forward search tables. Assemblies have extension `.fasta`. See examples below.
 	- For the reference search table (baits against reference sample) BLAST or BED formats are supported.
 	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with `.fas` extension
+	- sequence names do not contain `@`, and, additionally, sample names and sample sequence names do not contain `|` or the delimiter supplied with `-d`.
 * Methodological
 	- bait sequences can correspond to multiple hit regions in a given contig (a case of missing data or variable region in the bait, or intron presence in the sample contig)
 	- bait sequences can correspond to multiple contigs in the assembly (a case of low-coverage assembly with broken up gene sequences)
@@ -44,6 +43,7 @@ Clone the repository like this:
 ```
 git clone https://github.com/AlexKnyshov/alibaseq.git
 ```
+Alternatively, download and unpack the most recent version from the releases page: https://github.com/AlexKnyshov/alibaseq/releases
 
 ## Workflow
 
@@ -461,9 +461,15 @@ option `-r` specifies path to the reciprocal search output table file or the fol
 
 option `-R` specifies path to the query search against the reference assembly. (default: None)
 
+option `-s` specifies output log suffix. (default: default)
+
+option `--log-header` adds a header to the table-like log files. (default: False)
+
 ### table type
 
 option `--bt` specifies the alignment table type (only for forward searches; reciprocal and reference tables are always parsed as `blast`). `blast` is a standard blast table, `hmmer22` is a --domtblout table of hmmer, `hmmer18` is a protein --tblout table of hmmer, `hmmer15` is a dna --tblout table of hmmer, `lastz` is a Phyluce-style LASTZ output, `sam` is a SAM format, `bam` is a BAM format (default: blast)
+
+option `--btR` specifies the reference alignment table type, `blast` or `bed`. (default: blast)
 
 option `--ac` specifies the alignment table type. `dna-dna` is default, and has no special effects, except is not allowed to run with `--bt hmmer18` as the latter is a protein table. In `tdna-tdna`, `tdna-aa` and `aa-tdna` overlapping hits are checked for frameshift before joining. When set to `tdna-aa` or `aa-tdna`, coordinates of blast tables are modified accordingly to convert between AA and NT values. In `tdna-aa` and `aa-aa` output sequence translation is not allowed. (default: dna-dna)
 
@@ -487,13 +493,17 @@ option `--om` specifies the way sequences are output. When set to `query`, seque
 
 option `--keep-strand` turns off sequence reversal according to the query and outputs sequence in original direction (only has effect in combination with `-x n`). (default: False)
 
+option `--cname` appends original contig name to output sequence name, even for the cases where only single sequence per sample per bait is extracted. See `-d` below for customization. (default: False)
+
+option `-d` specifies the delimiter to be used in cases where several sequences extracted from the same samples for the same bait, delimits the sample name and the original sequence name. (default: |)
+
 ### scoring
 
 option `-e` specifies the evalue cutoff. Nothing will be considered above this cutoff as it filters out initial alignment table parsing. (default: 0.01)
 
-option `-B` specifies the bitscore cutoff. Nothing will be considered below this cutoff as it filters out initial alignment table parsing. (default: 0.0)
+option `-B` specifies the bitscore (or SAM / BAM metric) cutoff. Nothing will be considered below this cutoff as it filters out initial alignment table parsing. (default: 0.0)
 
-option `-i` specifies the identity cutoff. Nothing will be considered below this cutoff as it filters out initial alignment table parsing. (default: 0.0)
+option `-i` specifies the identity cutoff (not used for HMMER and SAM/BAM unless `=`/`X` instead of `M` are present in CIGAR of the latter). Nothing will be considered below this cutoff as it filters out initial alignment table parsing. (default: 0.0)
 
 option `-m` specifies the order of metrics to be used for discriminating between hits/contigs (e - evalue, b - bitscore, i - identity); by default the evalue and bitscore differentials are compared and if not congruent, identitry is used for final decision. (default: e/b-i)
 
@@ -502,6 +512,8 @@ option `--rescale-metric` rescales the metric value by the length of the match (
 option `--hmmer-global` - for hmmer22 tables only - uses contig scores instead of domain (hit) scores; do not use in combination with `--amalgamate-hits` (default: False)
 
 option `--samScore` specifies whether the mapping quality (`MAPQ`) or a custom SAM / BAM file attribute (for example, `AS` [alignment score], that is provided by many aligners) is used as a scoring metric (default: MAPQ)
+
+option `--dd` - in case a hit matches several queries with exactly equal score, assign such hit to all queries / none of the queries / at random to only one. A conservative `none` is the default option. (default: none)
 
 ### hit stitcher
 
@@ -517,7 +529,9 @@ option `--no-hs` prevents running hit stitcher on the forward search table (defa
 
 option `--ref-hs` turns on hit sticher on the reciprocal table (slow). Typically reciprocal table is much larger, and takes considerable amount of time to parse. The alternative, default, approach is for a given sample contig region to simply pick the best hit to reference that is located in the same region. (default: False)
 
-option `--max-gap` (if greater than 0) specifies the maximum distance between hits of a contig, if greater hits are split into alternative versions of the same sample contig; setting to 0 turns off (default: 0)
+option `--max-gap` (if greater than 0) specifies the maximum distance between hits of a contig, if greater hits are split into alternative versions of the same sample contig; setting to 0 turns it off. For very contiguous assemblies such as chromosome-level assemblies, it is highly recommended to set the maximum gap to some non-zero values, perhaps by using an average intron size for the organism in question. (default: 0)
+
+option `--synteny` specifies whether to stitch only the hits that are in synteny to query, or to stitch hits without such check. (default: 1)
 
 ### contig stitcher
 
@@ -531,7 +545,7 @@ option `--ctg-ovlp` specifies max allowed contig overlap on query, 0 or >= 1 in 
 
 option `--lr` specifies local single best match check (prevents same part of the sample contig being extracted to multiple queries). When set to `range`, each region of the sample contig (after joining multiple hits) is allowed to be matched to only one query. When set to `actual`, individual hits are checked for the same condition prior to being joined together. Can be switched off by setting `none`. (default: range)
 
-option `--both-strands 1` treats different strands of the same contig region as potentially separate loci and not be removed by the local homology check. `--both-strands 0` allows only one best strand for each contig to be considered. (default: 1)
+option `--both-strands 1` treats different strands of the same contig region as potentially separate loci and not be removed by the local homology check. `--both-strands 0` allows only one best strand for each contig to be considered. Leaving the option set to 1 increases the chances of a single correct sequenced picked since the two strands would survive until the final supercontig filtering step. However, when `-c` is set such that multiple supercontigs to be extracted, it is advised to set `--both-strands` to 0 to avoid extracting the same sequence twice. (default: 1)
 
 option `--recip-ovlp` specifies max allowed hit/contig overlap on query for reciprocal check (both "local" and "global" checks), 0 or >= 1 in bp, or relative 0 < N < 1. If two hits/contigs overlap more than this amount, they are considered to be sufficiently overlapping to pick only one best out of the two. (default: 10)
 
@@ -548,6 +562,7 @@ The following log files are output
 * `alibaseq_<suffix>.log` contains generic information about the parameters used to run the script, reference sample processed (if any), and summary data on each sample processed.
 * `<sample name>_<logsuffix>.log` contains information about processing an individual sample
 * `<sample name>_<logsuffix>_qtable.tab` contains per-query (bait) information about an individual sample. The format is described in the subsection below.
+* `<sample name>_<logsuffix>_qtableH.tab` contains a more easily readable CSV with query (bait) - sample supercontig pairs, the fields are as follows: query name, supercontig index, hit name, pseudocontig index, direction (strand), pseudocontig start, pseudocontig end, query start, query end, evalue, bitscore, identity.
 * `<sample name>_<logsuffix>_ttable.tab` is a comma-delimited file, contains per-contig information about an individual sample. Each line corresponds to the contig used in the first column, number of baits it contributed to in the second column, and bait names in the subsequent columns
 
 ### qtable log format
