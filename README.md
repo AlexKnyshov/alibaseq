@@ -25,6 +25,7 @@ The following assumptions were used when developing the script:
 	- For the reference search table (baits against reference sample) BLAST or BED formats are supported.
 	- if provided scripts are used for forward searches, bait files are to be organized one per locus in the same folder, with `.fas` extension
 	- sequence names do not contain `@`, and, additionally, sample names and sample sequence names do not contain `|` or the delimiter supplied with `-d`.
+	- for the supporting shell scripts - appropriate dependencies and commands are available in path and in python. Module load options are provided for some bash scripts, however the user might need to adjust these scripts if they do not appear to work properly / locate necessary dependencies on their system.
 * Methodological
 	- bait sequences can correspond to multiple hit regions in a given contig (a case of missing data or variable region in the bait, or intron presence in the sample contig)
 	- bait sequences can correspond to multiple contigs in the assembly (a case of low-coverage assembly with broken up gene sequences)
