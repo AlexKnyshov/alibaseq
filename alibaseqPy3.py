@@ -565,7 +565,7 @@ def readbedfilefunc(b, cols, debugfile):
             target_b = True
         else:
             target_b = False
-        returndict[qname] = {tname : {linecounter : 
+        returndict[qname] = {tname : {linecounter :
             [target_f, target_r, target_b, query_f, query_r, query_b, 0, 1, 100.0]}}
     print (returndict, file = debugfile)
     bedfile.close()
@@ -703,10 +703,10 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap,
                                                 filtration_table1, metric, metricR)
             else:
                 messagefunc("only one HSP for this hit, no reciprocity check", cols, debugfile)
-        #run hit overlapper and stitcher 
+        #run hit overlapper and stitcher
         messagefunc("running hit processor", cols, debugfile)
         if run_hs1:
-            tgt_proc_out = hit_stitcher(targetval, metric, metricR, hit_overlap, ac1, 
+            tgt_proc_out = hit_stitcher(targetval, metric, metricR, hit_overlap, ac1,
                                         max_gap1, amlghitscore, metricC, filtration_table1,
                                         cols, debugfile) #stitched subcontigs per query
         else:
@@ -727,7 +727,7 @@ def target_processor(inpdict, local_rec, metric, metricR, hit_overlap,
 
 #function to split hits by 'relative' strand (same vs opposite)
 #input is dictionary {linecounter: [target_f, target_r, target_b,
-#                                   query_f, query_r, query_b, 
+#                                   query_f, query_r, query_b,
 #                                   float(row[10]), float(row[11]),float(row[2])]}
 #return list of dictionaries
 def strand_selector(inpdict):
@@ -740,7 +740,7 @@ def strand_selector(inpdict):
         else:
             clusterR[hitkey] = hitval
     return [clusterF, clusterR]
-    
+
 #function to check that each target hit region matches to only one query
 def actual_reciprocator(inpdict, recip_overlap, bstrands2, filtration_table2, metric, metricR):
     returndict = inpdict
@@ -790,7 +790,7 @@ def actual_reciprocator(inpdict, recip_overlap, bstrands2, filtration_table2, me
         #hits with same target but different queries - check against all strands
         for refhit in list(x for x in refqueryval):
             if (refquerykey, refhit) not in blacklisted:
-                for testquerykey, testqueryval in inpdict.items():    
+                for testquerykey, testqueryval in inpdict.items():
                     if testquerykey != refquerykey:
                         for testhit in list(x for x in testqueryval):
                             if testhit != refhit and (testquerykey, testhit) not in blacklisted:
@@ -883,7 +883,7 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2,
                 hitdict = clusters[cluster_index]
                 messagefunc("direction: "+str(direct)+", number of HSPs: "+
                             str(len(clusters[cluster_index])), cols, debugfile)
-                subcontigs = [] 
+                subcontigs = []
                 if ac2 == "tdna-aa" or ac2 == "tdna-tdna" or ac2 == "aa-tdna":
                     hitdicts = trans_selector(hitdict)
                 else:
@@ -945,7 +945,7 @@ def hit_stitcher(inpdict, metric, metricR, hit_overlap, ac2,
                                         currently_processing[best_ind] = \
                                         extend_hit(currently_processing[best_ind],
                                                     trans_dict[sorted_startpoints[i]])
-                                #else overlaps on query but not target - 
+                                #else overlaps on query but not target -
                                 #   add separate layer, keep current in the current layer
                                 else:
                                     currently_processing.append(trans_dict[sorted_startpoints[i]])
@@ -998,7 +998,7 @@ def synteny_check(item1, item2, direct1, max_gap3, cols1, debugfile1):
     deltaT = item2medT - item1medT
     deltaQ = item2medQ - item1medQ
     if syntcheck:
-        if direct1:     
+        if direct1:
             if deltaQ > 0 and deltaT < 0:
                 cond = False
             elif deltaQ < 0 and deltaT > 0:
@@ -1103,7 +1103,7 @@ def join_contigs(inplist):
 
 #function to merge overlapping hits. resulting hit gets highest score
 def extend_hit(item1, item2):
-    outlist = []    
+    outlist = []
     scores = (min(item1[6], item2[6]), max(item1[7], item2[7]), max(item1[8], item2[8]))
     #using item1 as benchmark for resulting direction
     direction1 = item1[2]
@@ -1128,7 +1128,7 @@ def extend_hit(item1, item2):
         outlist.append(score)
     return outlist
 
-#function to combine scores (used for hit (only if --amalgamate-hits) and 
+#function to combine scores (used for hit (only if --amalgamate-hits) and
 #   contig (always) stitching)
 def amalgamate_scores(item1, item2, metricC):
     neweval = item1[0] * item2[0] #probability product
@@ -1138,7 +1138,7 @@ def amalgamate_scores(item1, item2, metricC):
     newbit = (item1[1] + item2[1])*metricC #sum of bits
     newident = (item1[2] + item2[2]) / 2 #average of identities
     return [neweval, newbit, newident]
-    
+
 #function to compare scores of two items, takes ranges and scores
 #return 0 if first is better
 #return 1 if second is better
@@ -1161,7 +1161,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
         eval2 = item2scores[0]
         bit2 = item2scores[1]
         ident2 =  item2scores[2]
-    
+
     metricL = [[eval1,eval2],[bit1,bit2],[ident1,ident2]]
     if metric == "e/b-i":
         if metricL[0][0] < metricL[0][1] and metricL[1][0] > metricL[1][1]:
@@ -1229,7 +1229,7 @@ def compare_scores(item1ranges, item1scores, item2ranges, item2scores, metric, m
                 #third order is equal, return 2
                 else:
                     return 2
-    
+
 #function to check reciprocity based on stitched match ranges
 #   (rather than individual HSP ranges)
 def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap,
@@ -1245,7 +1245,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap,
             ref_query_direct = inpdict[querykey][0]
             for key in querylist: #running loop over other queries
                 if key not in badkeys:
-                    #if both-strands to be considered, 
+                    #if both-strands to be considered,
                     #   do not compare strands of same contig
                     #if both-strands are off,
                     #   compare anything including diff strands of same contig,
@@ -1300,7 +1300,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap,
                                                 ", "+key+", removing the latter...",
                                                 cols, debugfile)
                                     badkeys.add(key)
-                                    
+
             if cond: #only return good items
                 returnlist[querykey] = queryval
     messagefunc(str(len(returnlist))+" queries survived, "+str(len(badkeys))+
@@ -1311,7 +1311,7 @@ def range_reciprocator(targetkey1, inpdict, metric, metricR, recip_overlap,
     filtration_table2["range"] += len(badkeys)
     print ("survived:", returnlist, file = debugfile)
     return returnlist
-    
+
 #second main function
 def query_processor(inpdict, rec_dict, target_ref, metric, metricR, metricC,
                     contignum, contig_overlap, interstitch, hit_overlap, ac1,
@@ -1595,7 +1595,7 @@ def reference_reciprocator(query, queryval, rec_dict, target_ref, metric,
                                         best_rec_name = rec_target_base
                                         best_rec_val = hit_val
                                 # situation when two are equal is not considered
-                    
+
                 if best_rec_name == None:
                     msg = "no same region matches to hit "+targetkey1+" in reciprocal table"
                     messagefunc(msg, cols, debugfile)
@@ -1679,7 +1679,7 @@ def contig_stitcher(inplist, metric, metricR, metricC, contig_overlap, cols, deb
                 else:
                     cond = True
                     for contig2 in current_list:
-                        #check names - do not allow same contig stitching - 
+                        #check names - do not allow same contig stitching -
                         #   reserved for hit stitcher only now:
                         if contig1[0].split("@")[0] == contig2[0].split("@")[0]:
                             cond = False
@@ -1774,7 +1774,7 @@ def getOverlap(a, b, o):
             return min(a1, b1) - max(a0, b0)
         else:
             return o+1
-    
+
 
 
 #function for writing actual sequence to file
@@ -1810,11 +1810,11 @@ def seqwritefunc(sequence, qname, tname, seqname, outM1, dir1, cname1, lentarget
 def median(lst):
     n = len(lst)
     if n < 1:
-            return None
+        return None
     if n % 2 == 1:
-            return sorted(lst)[n//2]
+        return sorted(lst)[n//2]
     else:
-            return sum(sorted(lst)[n//2-1:n//2+1])/2.0
+        return sum(sorted(lst)[n//2-1:n//2+1])/2.0
 
 
 #function to extract sequence from file and modify it
@@ -2237,12 +2237,12 @@ for b in blastlist:
     final_table = {}
     final_target_table = {}
     filtration_table = {}
-    
+
     #run target processor
     target_table = target_processor(output, local_rec, metric, metricR, hit_ovlp,
                                     recip_ovlp, ac, run_hs, max_gap, amlghitscore,
                                     metricC, bstrands, filtration_table, cols, debugfile)
-    
+
     #run query processor
     final_table = query_processor(target_table, rec_out, target_ref, metric, metricR,
                                     metricC, contignum, ctg_ovlp, interstitch, hit_ovlp,
@@ -2273,7 +2273,7 @@ for b in blastlist:
     else:
         messagefunc("scanning the sample fasta file(s)...",
                     cols, debugfile_generic, False)
-        
+
         if filefolder == "SM":
             for seqname in targetlist:
                 inputf = SeqIO.parse(seqname, "fasta")
